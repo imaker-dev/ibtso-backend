@@ -1,0 +1,591 @@
+{
+  "info": {
+    "name": "IBTSO Asset Tracking API",
+    "description": "Complete API collection for IBTSO Asset Tracking Platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set(\"token\", jsonData.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@ibtso.com\",\n  \"password\": \"Admin@123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"Admin@123\",\n  \"newPassword\": \"NewPassword@123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/change-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "change-password"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dealers",
+      "item": [
+        {
+          "name": "Create Dealer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"phone\": \"+1234567890\",\n  \"email\": \"john@example.com\",\n  \"shopName\": \"Doe Electronics\",\n  \"vatRegistration\": \"VAT123456789\",\n  \"location\": {\n    \"address\": \"123 Main St, City, Country\",\n    \"latitude\": 40.7128,\n    \"longitude\": -74.0060,\n    \"googleMapLink\": \"https://maps.google.com/?q=40.7128,-74.0060\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/dealers",
+              "host": ["{{base_url}}"],
+              "path": ["dealers"]
+            }
+          }
+        },
+        {
+          "name": "Get All Dealers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dealers?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["dealers"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Dealer by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dealers/:id",
+              "host": ["{{base_url}}"],
+              "path": ["dealers", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Dealer",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Name\",\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/dealers/:id",
+              "host": ["{{base_url}}"],
+              "path": ["dealers", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Toggle Dealer Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dealers/:id/toggle-status",
+              "host": ["{{base_url}}"],
+              "path": ["dealers", ":id", "toggle-status"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reset Dealer Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dealers/:id/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["dealers", ":id", "reset-password"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Assets",
+      "item": [
+        {
+          "name": "Create Asset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fixtureNo\": \"FIX-001\",\n  \"assetNo\": \"ASSET-001\",\n  \"dimension\": {\n    \"length\": 100,\n    \"height\": 200,\n    \"depth\": 50,\n    \"unit\": \"cm\"\n  },\n  \"standType\": \"Wall Mount\",\n  \"brand\": \"Samsung\",\n  \"dealerId\": \"DEALER_ID_HERE\",\n  \"installationDate\": \"2024-01-15\",\n  \"location\": {\n    \"address\": \"123 Store Street\",\n    \"latitude\": 40.7128,\n    \"longitude\": -74.0060\n  },\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/assets",
+              "host": ["{{base_url}}"],
+              "path": ["assets"]
+            }
+          }
+        },
+        {
+          "name": "Get All Assets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/assets?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["assets"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "brand",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Asset by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/assets/:id",
+              "host": ["{{base_url}}"],
+              "path": ["assets", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Asset Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"MAINTENANCE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/assets/:id/status",
+              "host": ["{{base_url}}"],
+              "path": ["assets", ":id", "status"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Barcodes",
+      "item": [
+        {
+          "name": "Scan Barcode",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/barcodes/scan/:barcodeValue",
+              "host": ["{{base_url}}"],
+              "path": ["barcodes", "scan", ":barcodeValue"],
+              "variable": [
+                {
+                  "key": "barcodeValue",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Download Barcode",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/barcodes/download/:assetId",
+              "host": ["{{base_url}}"],
+              "path": ["barcodes", "download", ":assetId"],
+              "variable": [
+                {
+                  "key": "assetId",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Validate Barcode",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"barcodeValue\": \"IBTSO-DLR-XXXX-FIX-001-2024-123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/barcodes/validate",
+              "host": ["{{base_url}}"],
+              "path": ["barcodes", "validate"]
+            }
+          }
+        },
+        {
+          "name": "Get All Barcodes for Dealer (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/barcodes/dealer/:dealerId/all",
+              "host": ["{{base_url}}"],
+              "path": ["barcodes", "dealer", ":dealerId", "all"],
+              "variable": [
+                {
+                  "key": "dealerId",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Download All Barcodes as PDF (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/barcodes/dealer/:dealerId/download-pdf",
+              "host": ["{{base_url}}"],
+              "path": ["barcodes", "dealer", ":dealerId", "download-pdf"],
+              "variable": [
+                {
+                  "key": "dealerId",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Download All Barcodes as ZIP (ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/barcodes/dealer/:dealerId/download-zip",
+              "host": ["{{base_url}}"],
+              "path": ["barcodes", "dealer", ":dealerId", "download-zip"],
+              "variable": [
+                {
+                  "key": "dealerId",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Admin Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dashboard/admin",
+              "host": ["{{base_url}}"],
+              "path": ["dashboard", "admin"]
+            }
+          }
+        },
+        {
+          "name": "Dealer Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dashboard/dealer",
+              "host": ["{{base_url}}"],
+              "path": ["dashboard", "dealer"]
+            }
+          }
+        },
+        {
+          "name": "System Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dashboard/system-stats",
+              "host": ["{{base_url}}"],
+              "path": ["dashboard", "system-stats"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
