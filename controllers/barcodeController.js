@@ -413,31 +413,64 @@ exports.downloadAllBarcodesAsPDF = async (req, res, next) => {
       tempImages.push({ path: tempImagePath, asset });
     }
 
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc = new PDFDocument({ margin: 30, size: 'A4' });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${dealer.dealerCode}_all_barcodes.pdf"`);
     doc.pipe(res);
 
-    doc.fontSize(20).text('Asset Barcodes', { align: 'center' });
-    doc.fontSize(12).text(`Dealer: ${dealer.name} (${dealer.dealerCode})`, { align: 'center' });
-    doc.fontSize(10).text(`Generated on: ${moment().format('DD MMM YYYY, hh:mm A')}`, { align: 'center' });
-    doc.moveDown(2);
-
+    const pageWidth = 595;
+    const pageHeight = 842;
+    const margin = 30;
+    const headerHeight = 80;
+    
+    const cols = 3;
+    const rows = 3;
+    const codesPerPage = cols * rows;
+    
+    const usableWidth = pageWidth - (2 * margin);
+    const usableHeight = pageHeight - (2 * margin) - headerHeight;
+    
+    const cellWidth = usableWidth / cols;
+    const cellHeight = usableHeight / rows;
+    
+    const qrSize = Math.min(cellWidth, cellHeight) - 30;
+    
+    let currentPage = -1;
+    
     for (let i = 0; i < tempImages.length; i++) {
       const { path: imgPath, asset } = tempImages[i];
-
-      if (i > 0 && i % 2 === 0) {
-        doc.addPage();
+      
+      const pageIndex = Math.floor(i / codesPerPage);
+      const positionOnPage = i % codesPerPage;
+      
+      if (pageIndex !== currentPage) {
+        if (currentPage >= 0) {
+          doc.addPage();
+        }
+        currentPage = pageIndex;
+        
+        doc.fontSize(16).font('Helvetica-Bold').text('Asset Barcodes', margin, margin, { align: 'center', width: usableWidth });
+        doc.fontSize(10).font('Helvetica').text(`Dealer: ${dealer.name} (${dealer.dealerCode})`, margin, margin + 22, { align: 'center', width: usableWidth });
+        doc.fontSize(8).font('Helvetica').text(`Generated: ${moment().format('DD MMM YYYY, hh:mm A')} | Page ${currentPage + 1}`, margin, margin + 38, { align: 'center', width: usableWidth });
       }
-
-      const yPosition = i % 2 === 0 ? 150 : 450;
-
-      doc.fontSize(12).font('Helvetica-Bold').text(asset.assetNo, 50, yPosition, { width: 500, align: 'center' });
-      doc.fontSize(10).font('Helvetica').text(`${asset.fixtureNo} | ${asset.brand}`, 50, yPosition + 20, { width: 500, align: 'center' });
-
+      
+      const col = positionOnPage % cols;
+      const row = Math.floor(positionOnPage / cols);
+      
+      const xPos = margin + (col * cellWidth);
+      const yPos = margin + headerHeight + (row * cellHeight);
+      
+      const centerX = xPos + (cellWidth / 2);
+      const centerY = yPos + (cellHeight / 2);
+      
+      doc.fontSize(8).font('Helvetica-Bold').text(asset.assetNo, xPos, yPos + 5, { width: cellWidth, align: 'center' });
+      doc.fontSize(7).font('Helvetica').text(`${asset.fixtureNo}`, xPos, yPos + 18, { width: cellWidth, align: 'center' });
+      
       try {
-        doc.image(imgPath, 200, yPosition + 40, { width: 200, height: 240 });
+        const imgX = centerX - (qrSize / 2);
+        const imgY = yPos + 30;
+        doc.image(imgPath, imgX, imgY, { width: qrSize, height: qrSize });
       } catch (err) {
         console.error(`Error adding image for ${asset.assetNo}:`, err);
       }

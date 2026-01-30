@@ -25,8 +25,8 @@ const generateBarcodeImage = async (barcodeValue, assetNo = null) => {
 
     const qrCodeBuffer = await QRCode.toBuffer(scanUrl, {
       type: 'png',
-      width: 500,
-      margin: 2,
+      width: 250,
+      margin: 1,
       color: {
         dark: '#000000',
         light: '#FFFFFF'
@@ -40,21 +40,21 @@ const generateBarcodeImage = async (barcodeValue, assetNo = null) => {
     if (assetNo) {
       const qrImage = await Jimp.read(qrCodeBuffer);
       
-      const textHeight = 60;
+      const textHeight = 40;
       const finalImage = new Jimp(
-        qrImage.bitmap.width + 40,
-        qrImage.bitmap.height + textHeight + 40,
+        qrImage.bitmap.width + 20,
+        qrImage.bitmap.height + textHeight + 20,
         '#FFFFFF'
       );
       
-      finalImage.composite(qrImage, 20, 20);
+      finalImage.composite(qrImage, 10, 10);
       
-      const font = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
+      const font = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
       
       finalImage.print(
         font,
         0,
-        qrImage.bitmap.height + 30,
+        qrImage.bitmap.height + 15,
         {
           text: assetNo,
           alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER,
@@ -99,12 +99,14 @@ const regenerateBarcode = async (oldBarcodeImagePath, newBarcodeValue, assetNo =
 };
 
 const checkBarcodeUniqueness = async (Asset, barcodeValue, excludeAssetId = null) => {
-  const query = { barcodeValue };
+  const { Op } = require('sequelize');
+  
+  const where = { barcodeValue };
   if (excludeAssetId) {
-    query._id = { $ne: excludeAssetId };
+    where.id = { [Op.ne]: excludeAssetId };
   }
   
-  const existing = await Asset.findOne(query);
+  const existing = await Asset.findOne({ where });
   return !existing;
 };
 

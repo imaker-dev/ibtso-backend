@@ -133,11 +133,11 @@ exports.getDealerById = async (req, res, next) => {
 
     const assets = await Asset.findAll({
       where: { dealerId: dealer.id, isDeleted: false },
-      attributes: ['fixtureNo', 'assetNo', 'brand', 'status', 'barcodeValue', 'barcodeImagePath', 'installationDate', 'dimension', 'standType', 'location', 'createdAt'],
+      attributes: ['fixtureNo', 'assetNo', 'brand', 'status', 'barcodeValue', 'barcodeImagePath', 'installationDate', 'dimension', 'standType', 'location', 'created_at'],
       include: [
         { model: User, as: 'creator', attributes: ['name', 'email'] }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['created_at', 'DESC']]
     });
 
     const assetCount = assets.length;
