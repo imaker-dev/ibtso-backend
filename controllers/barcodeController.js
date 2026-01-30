@@ -136,7 +136,7 @@ exports.scanBarcodePublic = async (req, res, next) => {
               </div>
               <div class="info-item">
                 <div class="info-label">Dimension</div>
-                <div class="info-value">${asset.dimension.length} (L) × ${asset.dimension.height} (H) × ${asset.dimension.depth} (D) ${asset.dimension.unit}</div>
+                <div class="info-value">${asset.dimension.length} (L) × ${asset.dimension.height} (H) × ${asset.dimension.depth} (D) cm</div>
               </div>
               <div class="info-item">
                 <div class="info-label">Stand Type</div>

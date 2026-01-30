@@ -25,7 +25,7 @@ exports.getAdminDashboard = async (req, res, next) => {
         [fn('COUNT', col('id')), 'count']
       ],
       group: ['brand'],
-      order: [[literal('count'), 'DESC']],
+      order: [[literal('"count"'), 'DESC']],
       limit: 10,
       raw: true
     });
@@ -49,7 +49,7 @@ exports.getAdminDashboard = async (req, res, next) => {
         }
       ],
       group: ['dealerId', 'dealer.id'],
-      order: [[literal('assetCount'), 'DESC']],
+      order: [[literal('"assetCount"'), 'DESC']],
       limit: 10,
       raw: false
     });
@@ -67,7 +67,7 @@ exports.getAdminDashboard = async (req, res, next) => {
     const recentAssets = await Asset.findAll({
       where: {
         isDeleted: false,
-        createdAt: { [Op.gte]: last30Days }
+        created_at: { [Op.gte]: last30Days }
       },
       include: [
         { model: Dealer, as: 'dealer', attributes: ['name', 'shopName', 'dealerCode'] }
@@ -80,7 +80,7 @@ exports.getAdminDashboard = async (req, res, next) => {
     const recentDealers = await Dealer.findAll({
       where: {
         isDeleted: false,
-        createdAt: { [Op.gte]: last30Days }
+        created_at: { [Op.gte]: last30Days }
       },
       include: [
         { model: User, as: 'creator', attributes: ['name'] }
@@ -98,7 +98,7 @@ exports.getAdminDashboard = async (req, res, next) => {
         [fn('COUNT', col('id')), 'count']
       ],
       group: [literal('year'), literal('month')],
-      order: [[literal('year'), 'DESC'], [literal('month'), 'DESC']],
+      order: [[literal('"year"'), 'DESC'], [literal('"month"'), 'DESC']],
       limit: 12,
       raw: true
     });
@@ -168,7 +168,7 @@ exports.getDealerDashboard = async (req, res, next) => {
         [fn('COUNT', col('id')), 'count']
       ],
       group: ['brand'],
-      order: [[literal('count'), 'DESC']],
+      order: [[literal('"count"'), 'DESC']],
       raw: true
     });
 
@@ -184,7 +184,7 @@ exports.getDealerDashboard = async (req, res, next) => {
       where: {
         dealerId,
         isDeleted: false,
-        createdAt: { [Op.gte]: last30Days }
+        created_at: { [Op.gte]: last30Days }
       },
       order: [['created_at', 'DESC']],
       limit: 10,
@@ -199,7 +199,7 @@ exports.getDealerDashboard = async (req, res, next) => {
         [fn('COUNT', col('id')), 'count']
       ],
       group: [literal('year'), literal('month')],
-      order: [[literal('year'), 'DESC'], [literal('month'), 'DESC']],
+      order: [[literal('"year"'), 'DESC'], [literal('"month"'), 'DESC']],
       limit: 12,
       raw: true
     });

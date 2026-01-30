@@ -34,12 +34,35 @@ const generateBarcodeImage = async (barcodeValue, assetNo = null) => {
       errorCorrectionLevel: 'H'
     });
 
+    let qrImage = await Jimp.read(qrCodeBuffer);
+
+    const logoPath = path.join(__dirname, '..', 'uploads', 'logo.png');
+    try {
+      await fs.access(logoPath);
+      const logo = await Jimp.read(logoPath);
+      
+      const logoSize = Math.floor(qrImage.bitmap.width * 0.18);
+      logo.resize(logoSize, logoSize);
+      
+      const centerX = Math.floor((qrImage.bitmap.width - logoSize) / 2);
+      const centerY = Math.floor((qrImage.bitmap.height - logoSize) / 2);
+      
+      const bgSize = logoSize + 10;
+      const bgCircle = new Jimp(bgSize, bgSize, 0xFFFFFFFF);
+      
+      const bgX = Math.floor((qrImage.bitmap.width - bgSize) / 2);
+      const bgY = Math.floor((qrImage.bitmap.height - bgSize) / 2);
+      
+      qrImage.composite(bgCircle, bgX, bgY);
+      qrImage.composite(logo, centerX, centerY);
+    } catch (err) {
+      console.log('Logo not found or error embedding logo, generating QR without logo');
+    }
+
     const filename = `${barcodeValue.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.png`;
     const filepath = path.join(uploadsDir, filename);
 
     if (assetNo) {
-      const qrImage = await Jimp.read(qrCodeBuffer);
-      
       const textHeight = 40;
       const finalImage = new Jimp(
         qrImage.bitmap.width + 20,
@@ -65,7 +88,7 @@ const generateBarcodeImage = async (barcodeValue, assetNo = null) => {
       
       await finalImage.writeAsync(filepath);
     } else {
-      await fs.writeFile(filepath, qrCodeBuffer);
+      await qrImage.writeAsync(filepath);
     }
 
     const relativePath = path.join('uploads', 'barcodes', filename);
