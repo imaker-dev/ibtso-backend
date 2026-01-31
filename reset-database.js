@@ -28,7 +28,7 @@ async function resetDatabase() {
     await User.create({
       name: process.env.DEFAULT_ADMIN_NAME || 'IBTSO Admin',
       email: process.env.DEFAULT_ADMIN_EMAIL || 'admin@ibtso.com',
-      password: process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123',
+      password: process.env.DEFAULT_ADMIN_PASSWORD || 'ibtso@$2026',
       role: 'ADMIN',
       isActive: true,
     });
@@ -64,7 +64,7 @@ async function resetDatabase() {
     console.log('   1. Restart your server: npm run dev');
     console.log('   2. Login as admin to get NEW token (old tokens will not work):');
     console.log('      POST /api/v1/auth/login');
-    console.log('      { "email": "admin@ibtso.com", "password": "Admin@123" }\n');
+    console.log('      { "email": "admin@ibtso.com", "password": "ibtso@$2026" }\n');
     
   } catch (error) {
     console.error('❌ Error resetting database:', error);

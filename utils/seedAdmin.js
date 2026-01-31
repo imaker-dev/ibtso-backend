@@ -11,7 +11,7 @@ const createDefaultAdmin = async () => {
       await User.create({
         name: process.env.DEFAULT_ADMIN_NAME || 'IBTSO Admin',
         email: process.env.DEFAULT_ADMIN_EMAIL || 'admin@ibtso.com',
-        password: process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123',
+        password: process.env.DEFAULT_ADMIN_PASSWORD || 'ibtso@$2026',
         role: 'ADMIN',
         isActive: true,
       });
