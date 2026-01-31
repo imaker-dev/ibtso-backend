@@ -1,5 +1,6 @@
-const { Asset, Dealer, User } = require('../models');
-const { Op, fn, col, literal } = require('sequelize');
+const Asset = require('../models/Asset');
+const Dealer = require('../models/Dealer');
+const User = require('../models/User');
 const { AppError } = require('../middleware/errorHandler');
 
 exports.getAdminDashboard = async (req, res, next) => {
@@ -8,108 +9,92 @@ exports.getAdminDashboard = async (req, res, next) => {
       return next(new AppError('Only admins can access this dashboard', 403));
     }
 
-    const totalDealers = await Dealer.count({ where: { isDeleted: false } });
-    const activeDealers = await Dealer.count({ where: { isDeleted: false, isActive: true } });
-    const inactiveDealers = await Dealer.count({ where: { isDeleted: false, isActive: false } });
+    const totalDealers = await Dealer.countDocuments({ isDeleted: false });
+    const activeDealers = await Dealer.countDocuments({ isDeleted: false, isActive: true });
+    const inactiveDealers = await Dealer.countDocuments({ isDeleted: false, isActive: false });
 
-    const totalAssets = await Asset.count({ where: { isDeleted: false } });
-    const activeAssets = await Asset.count({ where: { isDeleted: false, status: 'ACTIVE' } });
-    const inactiveAssets = await Asset.count({ where: { isDeleted: false, status: 'INACTIVE' } });
-    const maintenanceAssets = await Asset.count({ where: { isDeleted: false, status: 'MAINTENANCE' } });
-    const damagedAssets = await Asset.count({ where: { isDeleted: false, status: 'DAMAGED' } });
+    const totalAssets = await Asset.countDocuments({ isDeleted: false });
+    const activeAssets = await Asset.countDocuments({ isDeleted: false, status: 'ACTIVE' });
+    const inactiveAssets = await Asset.countDocuments({ isDeleted: false, status: 'INACTIVE' });
+    const maintenanceAssets = await Asset.countDocuments({ isDeleted: false, status: 'MAINTENANCE' });
+    const damagedAssets = await Asset.countDocuments({ isDeleted: false, status: 'DAMAGED' });
 
-    const assetsByBrandRaw = await Asset.findAll({
-      where: { isDeleted: false },
-      attributes: [
-        'brand',
-        [fn('COUNT', col('id')), 'count']
-      ],
-      group: ['brand'],
-      order: [[literal('"count"'), 'DESC']],
-      limit: 10,
-      raw: true
-    });
+    const assetsByBrand = await Asset.aggregate([
+      { $match: { isDeleted: false } },
+      { 
+        $group: { 
+          _id: '$brand', 
+          count: { $sum: 1 } 
+        } 
+      },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]);
 
-    const assetsByBrand = assetsByBrandRaw.map(item => ({
-      _id: item.brand,
-      count: parseInt(item.count)
-    }));
-
-    const assetsByDealerRaw = await Asset.findAll({
-      where: { isDeleted: false },
-      attributes: [
-        'dealerId',
-        [fn('COUNT', col('Asset.id')), 'assetCount']
-      ],
-      include: [
-        {
-          model: Dealer,
-          as: 'dealer',
-          attributes: ['name', 'shopName', 'dealerCode']
+    const assetsByDealer = await Asset.aggregate([
+      { $match: { isDeleted: false } },
+      {
+        $group: {
+          _id: '$dealerId',
+          count: { $sum: 1 }
         }
-      ],
-      group: ['dealerId', 'dealer.id'],
-      order: [[literal('"assetCount"'), 'DESC']],
-      limit: 10,
-      raw: false
-    });
-
-    const assetsByDealer = assetsByDealerRaw.map(item => ({
-      dealerName: item.dealer?.name,
-      shopName: item.dealer?.shopName,
-      dealerCode: item.dealer?.dealerCode,
-      assetCount: parseInt(item.get('assetCount'))
-    }));
+      },
+      { $sort: { count: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: 'dealers',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'dealer'
+        }
+      },
+      { $unwind: '$dealer' },
+      {
+        $project: {
+          dealerName: '$dealer.name',
+          shopName: '$dealer.shopName',
+          dealerCode: '$dealer.dealerCode',
+          assetCount: '$count'
+        }
+      }
+    ]);
 
     const last30Days = new Date();
     last30Days.setDate(last30Days.getDate() - 30);
 
-    const recentAssets = await Asset.findAll({
-      where: {
-        isDeleted: false,
-        created_at: { [Op.gte]: last30Days }
-      },
-      include: [
-        { model: Dealer, as: 'dealer', attributes: ['name', 'shopName', 'dealerCode'] }
-      ],
-      order: [['created_at', 'DESC']],
-      limit: 10,
-      attributes: ['fixtureNo', 'assetNo', 'brand', 'status', 'created_at']
-    });
+    const recentAssets = await Asset.find({ 
+      isDeleted: false,
+      createdAt: { $gte: last30Days }
+    })
+      .populate('dealerId', 'name shopName dealerCode')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select('fixtureNo assetNo brand status createdAt');
 
-    const recentDealers = await Dealer.findAll({
-      where: {
-        isDeleted: false,
-        created_at: { [Op.gte]: last30Days }
-      },
-      include: [
-        { model: User, as: 'creator', attributes: ['name'] }
-      ],
-      order: [['created_at', 'DESC']],
-      limit: 10,
-      attributes: ['dealerCode', 'name', 'shopName', 'email', 'isActive', 'created_at']
-    });
+    const recentDealers = await Dealer.find({ 
+      isDeleted: false,
+      createdAt: { $gte: last30Days }
+    })
+      .populate('createdBy', 'name')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select('dealerCode name shopName email isActive createdAt');
 
-    const assetsCreatedPerMonthRaw = await Asset.findAll({
-      where: { isDeleted: false },
-      attributes: [
-        [fn('EXTRACT', literal('YEAR FROM "created_at"')), 'year'],
-        [fn('EXTRACT', literal('MONTH FROM "created_at"')), 'month'],
-        [fn('COUNT', col('id')), 'count']
-      ],
-      group: [literal('year'), literal('month')],
-      order: [[literal('"year"'), 'DESC'], [literal('"month"'), 'DESC']],
-      limit: 12,
-      raw: true
-    });
-
-    const assetsCreatedPerMonth = assetsCreatedPerMonthRaw.map(item => ({
-      _id: {
-        year: parseInt(item.year),
-        month: parseInt(item.month)
+    const assetsCreatedPerMonth = await Asset.aggregate([
+      { $match: { isDeleted: false } },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' }
+          },
+          count: { $sum: 1 }
+        }
       },
-      count: parseInt(item.count)
-    }));
+      { $sort: { '_id.year': -1, '_id.month': -1 } },
+      { $limit: 12 }
+    ]);
 
     res.status(200).json({
       success: true,
@@ -148,69 +133,56 @@ exports.getDealerDashboard = async (req, res, next) => {
       return next(new AppError('Only dealers can access this dashboard', 403));
     }
 
-    const dealerId = req.user.dealerRef || req.user.dealer_ref;
+    const dealerId = req.user.dealerRef;
 
-    const dealer = await Dealer.findByPk(dealerId);
+    const dealer = await Dealer.findById(dealerId);
     if (!dealer) {
       return next(new AppError('Dealer not found', 404));
     }
 
-    const totalAssets = await Asset.count({ where: { dealerId, isDeleted: false } });
-    const activeAssets = await Asset.count({ where: { dealerId, isDeleted: false, status: 'ACTIVE' } });
-    const inactiveAssets = await Asset.count({ where: { dealerId, isDeleted: false, status: 'INACTIVE' } });
-    const maintenanceAssets = await Asset.count({ where: { dealerId, isDeleted: false, status: 'MAINTENANCE' } });
-    const damagedAssets = await Asset.count({ where: { dealerId, isDeleted: false, status: 'DAMAGED' } });
+    const totalAssets = await Asset.countDocuments({ dealerId, isDeleted: false });
+    const activeAssets = await Asset.countDocuments({ dealerId, isDeleted: false, status: 'ACTIVE' });
+    const inactiveAssets = await Asset.countDocuments({ dealerId, isDeleted: false, status: 'INACTIVE' });
+    const maintenanceAssets = await Asset.countDocuments({ dealerId, isDeleted: false, status: 'MAINTENANCE' });
+    const damagedAssets = await Asset.countDocuments({ dealerId, isDeleted: false, status: 'DAMAGED' });
 
-    const assetsByBrandRaw = await Asset.findAll({
-      where: { dealerId, isDeleted: false },
-      attributes: [
-        'brand',
-        [fn('COUNT', col('id')), 'count']
-      ],
-      group: ['brand'],
-      order: [[literal('"count"'), 'DESC']],
-      raw: true
-    });
-
-    const assetsByBrand = assetsByBrandRaw.map(item => ({
-      _id: item.brand,
-      count: parseInt(item.count)
-    }));
+    const assetsByBrand = await Asset.aggregate([
+      { $match: { dealerId: dealer._id, isDeleted: false } },
+      { 
+        $group: { 
+          _id: '$brand', 
+          count: { $sum: 1 } 
+        } 
+      },
+      { $sort: { count: -1 } }
+    ]);
 
     const last30Days = new Date();
     last30Days.setDate(last30Days.getDate() - 30);
 
-    const recentAssets = await Asset.findAll({
-      where: {
-        dealerId,
-        isDeleted: false,
-        created_at: { [Op.gte]: last30Days }
-      },
-      order: [['created_at', 'DESC']],
-      limit: 10,
-      attributes: ['fixtureNo', 'assetNo', 'brand', 'status', 'barcodeValue', 'created_at']
-    });
+    const recentAssets = await Asset.find({ 
+      dealerId,
+      isDeleted: false,
+      createdAt: { $gte: last30Days }
+    })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select('fixtureNo assetNo brand status barcodeValue createdAt');
 
-    const assetsCreatedPerMonthRaw = await Asset.findAll({
-      where: { dealerId, isDeleted: false },
-      attributes: [
-        [fn('EXTRACT', literal('YEAR FROM "created_at"')), 'year'],
-        [fn('EXTRACT', literal('MONTH FROM "created_at"')), 'month'],
-        [fn('COUNT', col('id')), 'count']
-      ],
-      group: [literal('year'), literal('month')],
-      order: [[literal('"year"'), 'DESC'], [literal('"month"'), 'DESC']],
-      limit: 12,
-      raw: true
-    });
-
-    const assetsCreatedPerMonth = assetsCreatedPerMonthRaw.map(item => ({
-      _id: {
-        year: parseInt(item.year),
-        month: parseInt(item.month)
+    const assetsCreatedPerMonth = await Asset.aggregate([
+      { $match: { dealerId: dealer._id, isDeleted: false } },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' }
+          },
+          count: { $sum: 1 }
+        }
       },
-      count: parseInt(item.count)
-    }));
+      { $sort: { '_id.year': -1, '_id.month': -1 } },
+      { $limit: 12 }
+    ]);
 
     res.status(200).json({
       success: true,
@@ -246,13 +218,13 @@ exports.getSystemStats = async (req, res, next) => {
       return next(new AppError('Only admins can access system stats', 403));
     }
 
-    const totalUsers = await User.count({ where: { isDeleted: false } });
-    const activeUsers = await User.count({ where: { isDeleted: false, isActive: true } });
-    const adminUsers = await User.count({ where: { isDeleted: false, role: 'ADMIN' } });
-    const dealerUsers = await User.count({ where: { isDeleted: false, role: 'DEALER' } });
+    const totalUsers = await User.countDocuments({ isDeleted: false });
+    const activeUsers = await User.countDocuments({ isDeleted: false, isActive: true });
+    const adminUsers = await User.countDocuments({ isDeleted: false, role: 'ADMIN' });
+    const dealerUsers = await User.countDocuments({ isDeleted: false, role: 'DEALER' });
 
-    const totalDealers = await Dealer.count({ where: { isDeleted: false } });
-    const totalAssets = await Asset.count({ where: { isDeleted: false } });
+    const totalDealers = await Dealer.countDocuments({ isDeleted: false });
+    const totalAssets = await Asset.countDocuments({ isDeleted: false });
 
     const dbStats = {
       users: {

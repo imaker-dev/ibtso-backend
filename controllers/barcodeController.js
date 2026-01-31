@@ -1,5 +1,5 @@
-const { Asset, Dealer, User } = require('../models');
-const { Op } = require('sequelize');
+const Asset = require('../models/Asset');
+const Dealer = require('../models/Dealer');
 const { AppError } = require('../middleware/errorHandler');
 const { regenerateBarcode, generateBarcodeValue, generateBarcodeImage } = require('../services/barcodeService');
 const PDFDocument = require('pdfkit');
@@ -16,14 +16,10 @@ exports.scanBarcodePublic = async (req, res, next) => {
       return res.status(400).send('<h1>Error: Barcode value is required</h1>');
     }
 
-    const asset = await Asset.findOne({ 
-      where: { barcodeValue: barcodeValue.toUpperCase() },
-      include: [
-        { model: Dealer, as: 'dealer', attributes: ['dealerCode', 'name', 'shopName', 'email', 'phone', 'location', 'vatRegistration'] },
-        { model: User, as: 'creator', attributes: ['name', 'email'] },
-        { model: User, as: 'updater', attributes: ['name', 'email'] }
-      ]
-    });
+    const asset = await Asset.findOne({ barcodeValue: barcodeValue.toUpperCase() })
+      .populate('dealerId', 'dealerCode name shopName email phone location vatRegistration')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email');
 
     if (!asset) {
       return res.status(404).send(`
@@ -80,10 +76,6 @@ exports.scanBarcodePublic = async (req, res, next) => {
       'DAMAGED': '#e74c3c'
     };
 
-    const dealer = asset.dealer || {};
-    const creator = asset.creator || {};
-    const updater = asset.updater || {};
-
     const html = `
       <!DOCTYPE html>
       <html>
@@ -93,33 +85,37 @@ exports.scanBarcodePublic = async (req, res, next) => {
         <title>Asset Details - ${asset.assetNo}</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
           .container { max-width: 800px; margin: 0 auto; background: white; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); overflow: hidden; }
           .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
           .header h1 { font-size: 28px; margin-bottom: 10px; }
-          .header p { opacity: 0.9; font-size: 14px; }
-          .highlight-box { background: #f8f9fa; border-left: 4px solid #667eea; padding: 20px; margin: 20px; border-radius: 8px; text-align: center; }
-          .highlight-box h2 { color: #667eea; font-size: 32px; margin-bottom: 5px; }
-          .highlight-box p { color: #6c757d; font-size: 14px; }
-          .content { padding: 20px; }
-          .section-title { background: #667eea; color: white; padding: 12px 20px; font-size: 16px; font-weight: bold; margin: 20px 0 15px 0; border-radius: 5px; }
-          .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 0 20px; margin-bottom: 20px; }
-          .info-item { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e9ecef; }
-          .info-label { font-size: 12px; color: #6c757d; margin-bottom: 5px; font-weight: 600; text-transform: uppercase; }
-          .info-value { font-size: 16px; color: #212529; font-weight: 500; word-break: break-word; }
-          .status-badge { display: inline-block; padding: 6px 12px; border-radius: 20px; color: white; font-size: 14px; font-weight: bold; }
-          .qr-image { text-align: center; padding: 30px 20px; background: #f8f9fa; margin: 20px; border-radius: 8px; }
-          .qr-image img { max-width: 300px; width: 100%; height: auto; border: 3px solid #667eea; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-          .qr-image p { margin-top: 15px; color: #6c757d; font-size: 14px; }
-          .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #6c757d; font-size: 12px; border-top: 1px solid #e9ecef; }
-          @media (max-width: 600px) { .info-grid { grid-template-columns: 1fr; } .header h1 { font-size: 24px; } }
+          .header p { font-size: 14px; opacity: 0.9; }
+          .content { padding: 30px; }
+          .section { margin-bottom: 25px; }
+          .section-title { font-size: 18px; font-weight: bold; color: #667eea; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 5px; }
+          .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+          .info-item { background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; }
+          .info-label { font-size: 12px; color: #6c757d; text-transform: uppercase; margin-bottom: 5px; }
+          .info-value { font-size: 16px; color: #212529; font-weight: 500; word-break: break-all; }
+          .status-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; color: white; font-weight: bold; font-size: 14px; }
+          .qr-image { text-align: center; margin: 20px 0; }
+          .qr-image img { max-width: 400px; border: 3px solid #667eea; border-radius: 10px; padding: 10px; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+          .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #6c757d; font-size: 12px; }
+          .highlight-box { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 25px; text-align: center; }
+          .highlight-box h2 { font-size: 32px; margin-bottom: 5px; }
+          .highlight-box p { font-size: 14px; opacity: 0.9; }
+          @media (max-width: 600px) {
+            .header h1 { font-size: 22px; }
+            .content { padding: 20px; }
+            .info-grid { grid-template-columns: 1fr; }
+          }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="header">
-            <h1>📦 Asset Information</h1>
-            <p>IBTSO Asset Tracking System</p>
+            <h1>🏢 IBTSO Asset Tracking</h1>
+            <p>Asset Information System</p>
           </div>
           
           <div class="content">
@@ -128,117 +124,135 @@ exports.scanBarcodePublic = async (req, res, next) => {
               <p>Asset Number</p>
             </div>
 
-            <div class="section-title">📦 Asset Information</div>
-            <div class="info-grid">
-              <div class="info-item" style="grid-column: 1 / -1;">
-                <div class="info-label">Fixture No/Asset No</div>
-                <div class="info-value">${asset.fixtureNo}/${asset.assetNo}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Dimension</div>
-                <div class="info-value">${asset.dimension.length} (L) × ${asset.dimension.height} (H) × ${asset.dimension.depth} (D) cm</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Stand Type</div>
-                <div class="info-value">${asset.standType}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Brand</div>
-                <div class="info-value">${asset.brand}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Installation Date</div>
-                <div class="info-value">${moment(asset.installationDate).format('Do MMM YYYY')}</div>
-              </div>
-              <div class="info-item" style="grid-column: 1 / -1;">
-                <div class="info-label">Status</div>
-                <div class="info-value">
-                  <span class="status-badge" style="background-color: ${statusColors[asset.status] || '#95a5a6'}">${asset.status}</span>
+            <div class="section">
+              <div class="section-title">📦 Asset Information</div>
+              <div class="info-grid">
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Fixture No/Asset No</div>
+                  <div class="info-value">${asset.fixtureNo}/${asset.assetNo}</div>
+                </div>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Dimension</div>
+                  <div class="info-value">${asset.dimension || 'N/A'}</div>
+                </div>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Dealer</div>
+                  <div class="info-value">${asset.dealerId.name}</div>
+                </div>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Stand Type</div>
+                  <div class="info-value">${asset.standType || 'N/A'}</div>
+                </div>
+               
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Brand</div>
+                  <div class="info-value">${asset.brand}</div>
+                </div>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Installation Date</div>
+                  <div class="info-value">${moment(asset.installationDate).format('Do MMM YYYY')}</div>
+                </div>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Status</div>
+                  <div class="info-value">
+                    <span class="status-badge" style="background-color: ${statusColors[asset.status] || '#95a5a6'}">${asset.status}</span>
+                  </div>
+                </div>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Days Since Installation</div>
+                  <div class="info-value">${moment().diff(moment(asset.installationDate), 'days')} days</div>
                 </div>
               </div>
-              <div class="info-item" style="grid-column: 1 / -1;">
-                <div class="info-label">Days Since Installation</div>
-                <div class="info-value">${moment().diff(moment(asset.installationDate), 'days')} days</div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">📍Asset Location Coordinates</div>
+              <div class="info-grid">
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Address</div>
+                  <div class="info-value">${asset.location.address}</div>
+                </div>
+                <div class="info-item">
+                  <div class="info-label">Latitude</div>
+                  <div class="info-value">${asset.location.latitude}</div>
+                </div>
+                <div class="info-item">
+                  <div class="info-label">Longitude</div>
+                  <div class="info-value">${asset.location.longitude}</div>
+                </div>
+                ${asset.location.googleMapLink ? `
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Google Maps</div>
+                  <div class="info-value"><a href="${asset.location.googleMapLink}" target="_blank" style="color: #667eea;">📍 View on Google Maps</a></div>
+                </div>
+                ` : ''}
               </div>
             </div>
 
-            <div class="section-title">🏪 Dealer Information</div>
-            <div class="info-grid">
-              <div class="info-item">
-                <div class="info-label">Name</div>
-                <div class="info-value">${dealer.name || 'N/A'}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Phone</div>
-                <div class="info-value">${dealer.phone || 'N/A'}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Email</div>
-                <div class="info-value">${dealer.email || 'N/A'}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Shop Name</div>
-                <div class="info-value">${dealer.shopName || 'N/A'}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">VAT Registration</div>
-                <div class="info-value">${dealer.vatRegistration || 'N/A'}</div>
-              </div>
-              <div class="info-item" style="grid-column: 1 / -1;">
-                <div class="info-label">Location</div>
-                <div class="info-value">${dealer.location?.address || 'N/A'}</div>
-              </div>
-            </div>
-
-            <div class="section-title">📍 Asset Location Coordinates</div>
-            <div class="info-grid">
-              <div class="info-item" style="grid-column: 1 / -1;">
-                <div class="info-label">Address</div>
-                <div class="info-value">${asset.location.address}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Latitude</div>
-                <div class="info-value">${asset.location.latitude}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Longitude</div>
-                <div class="info-value">${asset.location.longitude}</div>
-              </div>
-              <div class="info-item" style="grid-column: 1 / -1;">
-                <div class="info-label">Google Maps</div>
-                <div class="info-value"><a href="${asset.location.googleMapLink}" target="_blank" style="color: #667eea;">📍 View on Google Maps</a></div>
+            <div class="section">
+              <div class="section-title">🏪 Dealer Details</div>
+              <div class="info-grid">
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Name</div>
+                  <div class="info-value">${asset.dealerId.name}</div>
+                </div>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Phone No</div>
+                  <div class="info-value">${asset.dealerId.phone}</div>
+                </div>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Email</div>
+                  <div class="info-value">${asset.dealerId.email}</div>
+                </div>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Shop Name</div>
+                  <div class="info-value">${asset.dealerId.shopName}</div>
+                </div>
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">VAT Registration</div>
+                  <div class="info-value">${asset.dealerId.vatRegistration || 'N/A'}</div>
+                </div>
+                ${asset.dealerId.location ? `
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Location</div>
+                  <div class="info-value">${asset.dealerId.location.address || 'N/A'}</div>
+                </div>
+                ` : ''}
               </div>
             </div>
 
-            <div class="section-title">⏱️ Timeline Information</div>
-            <div class="info-grid">
-              <div class="info-item">
-                <div class="info-label">Created Date</div>
-                <div class="info-value">${moment(asset.createdAt).format('DD MMM YYYY, hh:mm A')}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Last Updated</div>
-                <div class="info-value">${moment(asset.updatedAt).format('DD MMM YYYY, hh:mm A')}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Created By</div>
-                <div class="info-value">${creator.name || 'N/A'}<br/><span style="font-size: 12px; color: #6c757d;">${creator.email || ''}</span></div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">Updated By</div>
-                <div class="info-value">${updater.name || 'N/A'}<br/><span style="font-size: 12px; color: #6c757d;">${updater.email || ''}</span></div>
+            <div class="section">
+              <div class="section-title">⏱️ Timeline Information</div>
+              <div class="info-grid">
+                <div class="info-item">
+                  <div class="info-label">Created Date</div>
+                  <div class="info-value">${moment(asset.createdAt).format('DD MMM YYYY, hh:mm A')}</div>
+                </div>
+                <div class="info-item">
+                  <div class="info-label">Last Updated</div>
+                  <div class="info-value">${moment(asset.updatedAt).format('DD MMM YYYY, hh:mm A')}</div>
+                </div>
+                ${asset.createdBy ? `
+                <div class="info-item">
+                  <div class="info-label">Created By</div>
+                  <div class="info-value">${asset.createdBy.name}<br/><span style="font-size: 12px; color: #6c757d;">${asset.createdBy.email}</span></div>
+                </div>
+                ` : ''}
+                ${asset.updatedBy ? `
+                <div class="info-item">
+                  <div class="info-label">Updated By</div>
+                  <div class="info-value">${asset.updatedBy.name}<br/><span style="font-size: 12px; color: #6c757d;">${asset.updatedBy.email}</span></div>
+                </div>
+                ` : ''}
               </div>
             </div>
-
-            <div class="qr-image">
-              <img src="${asset.toJSON().barcodeImageUrl}" alt="QR Code with Asset Number" />
-              <p>Scan this QR code to access asset details anytime</p>
-            </div>
+           
           </div>
 
           <div class="footer">
-            <p>© 2026 IBTSO Asset Tracking System</p>
-            <p>Powered by IBTSO Technology</p>
+            <p><strong>© ${new Date().getFullYear()} IBTSO Asset Tracking System</strong></p>
+            <p style="margin-top: 5px;">📅 Scanned at ${moment().format('DD MMM YYYY, hh:mm A')}</p>
+            <p style="margin-top: 5px; font-size: 11px; opacity: 0.8;">Asset ID: ${asset._id}</p>
           </div>
         </div>
       </body>
@@ -247,8 +261,29 @@ exports.scanBarcodePublic = async (req, res, next) => {
 
     res.send(html);
   } catch (error) {
-    console.error('Scan error:', error);
-    next(error);
+    console.error('Public scan error:', error);
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Error</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+          .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
+          h1 { color: #e74c3c; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>⚠️ Error</h1>
+          <p>An error occurred while retrieving asset details.</p>
+          <p style="color: #666; font-size: 14px; margin-top: 20px;">${error.message}</p>
+        </div>
+      </body>
+      </html>
+    `);
   }
 };
 
@@ -260,27 +295,58 @@ exports.scanBarcode = async (req, res, next) => {
       return next(new AppError('Barcode value is required', 400));
     }
 
-    const asset = await Asset.findOne({ 
-      where: { barcodeValue: barcodeValue.toUpperCase() },
-      include: [
-        { model: Dealer, as: 'dealer', attributes: ['dealerCode', 'name', 'shopName', 'email', 'phone', 'location', 'vatRegistration'] },
-        { model: User, as: 'creator', attributes: ['name', 'email'] },
-        { model: User, as: 'updater', attributes: ['name', 'email'] }
-      ]
-    });
+    const asset = await Asset.findOne({ barcodeValue: barcodeValue.toUpperCase() })
+      .populate('dealerId', 'dealerCode name shopName email phone location vatRegistration')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email');
 
     if (!asset) {
       return next(new AppError('Asset not found for this barcode', 404));
     }
 
-    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
-    if (req.user.role === 'DEALER' && asset.dealerId !== userDealerRef) {
-      return next(new AppError('You do not have permission to access this asset', 403));
+    if (asset.isDeleted) {
+      return next(new AppError('This asset has been deleted', 404));
     }
+
+    if (req.user.role === 'DEALER' && asset.dealerId._id.toString() !== req.user.dealerRef.toString()) {
+      return next(new AppError('You do not have permission to view this asset', 403));
+    }
+
+    const assetData = {
+      asset: {
+        _id: asset._id,
+        fixtureNo: asset.fixtureNo,
+        assetNo: asset.assetNo,
+        barcodeValue: asset.barcodeValue,
+        barcodeImageUrl: asset.barcodeImageUrl,
+        dimension: asset.dimension,
+        standType: asset.standType,
+        brand: asset.brand,
+        status: asset.status,
+        installationDate: asset.installationDate,
+        location: asset.location,
+        createdAt: asset.createdAt,
+        updatedAt: asset.updatedAt,
+      },
+      dealer: {
+        dealerCode: asset.dealerId.dealerCode,
+        name: asset.dealerId.name,
+        shopName: asset.dealerId.shopName,
+        email: asset.dealerId.email,
+        phone: asset.dealerId.phone,
+        location: asset.dealerId.location,
+        vatRegistration: asset.dealerId.vatRegistration,
+      },
+      audit: {
+        createdBy: asset.createdBy,
+        updatedBy: asset.updatedBy,
+      }
+    };
 
     res.status(200).json({
       success: true,
-      data: asset,
+      message: 'Asset details retrieved successfully',
+      data: assetData,
     });
   } catch (error) {
     next(error);
@@ -293,58 +359,28 @@ exports.regenerateBarcodeForAsset = async (req, res, next) => {
       return next(new AppError('Only admins can regenerate barcodes', 403));
     }
 
-    const asset = await Asset.findByPk(req.params.assetId, {
-      include: [{ model: Dealer, as: 'dealer' }]
-    });
+    const asset = await Asset.findById(req.params.assetId).populate('dealerId');
 
     if (!asset) {
       return next(new AppError('Asset not found', 404));
     }
 
-    const dealer = asset.dealer;
-    const newBarcodeValue = generateBarcodeValue(dealer.dealerCode, asset.fixtureNo);
+    const newBarcodeValue = generateBarcodeValue(asset.dealerId.dealerCode, asset.fixtureNo);
 
-    const barcodeImage = await regenerateBarcode(
-      asset.barcodeImagePath,
-      newBarcodeValue,
-      asset.assetNo
-    );
+    const barcodeImage = await regenerateBarcode(asset.barcodeImagePath, newBarcodeValue, asset.assetNo);
 
     asset.barcodeValue = newBarcodeValue;
     asset.barcodeImagePath = barcodeImage.relativePath;
+    asset.updatedBy = req.user._id;
     await asset.save();
-
-    const updatedAsset = await Asset.findByPk(asset.id, {
-      include: [
-        { model: Dealer, as: 'dealer', attributes: ['dealerCode', 'name', 'shopName'] },
-        { model: User, as: 'creator', attributes: ['name', 'email'] }
-      ]
-    });
 
     res.status(200).json({
       success: true,
       message: 'Barcode regenerated successfully',
-      data: updatedAsset,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-exports.checkBarcodeAvailability = async (req, res, next) => {
-  try {
-    const { barcodeValue } = req.params;
-
-    if (!barcodeValue) {
-      return next(new AppError('Barcode value is required', 400));
-    }
-
-    const asset = await Asset.findOne({ where: { barcodeValue: barcodeValue.toUpperCase() } });
-
-    res.status(200).json({
-      success: true,
-      available: !asset,
-      message: asset ? 'Barcode already in use' : 'Barcode is available',
+      data: {
+        barcodeValue: asset.barcodeValue,
+        barcodeImageUrl: asset.barcodeImageUrl,
+      },
     });
   } catch (error) {
     next(error);
@@ -353,24 +389,140 @@ exports.checkBarcodeAvailability = async (req, res, next) => {
 
 exports.downloadBarcode = async (req, res, next) => {
   try {
-    const asset = await Asset.findByPk(req.params.assetId);
+    const { assetId } = req.params;
+
+    const asset = await Asset.findById(assetId);
 
     if (!asset) {
       return next(new AppError('Asset not found', 404));
     }
 
-    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
-    if (req.user.role === 'DEALER' && asset.dealerId !== userDealerRef) {
-      return next(new AppError('You can only download barcodes for your own assets', 403));
+    if (req.user.role === 'DEALER' && asset.dealerId.toString() !== req.user.dealerRef.toString()) {
+      return next(new AppError('You do not have permission to access this barcode', 403));
     }
 
-    const filePath = path.join(__dirname, '..', asset.barcodeImagePath);
+    res.status(200).json({
+      success: true,
+      data: {
+        barcodeValue: asset.barcodeValue,
+        barcodeImageUrl: asset.barcodeImageUrl,
+        assetNo: asset.assetNo,
+        fixtureNo: asset.fixtureNo,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    if (!fs.existsSync(filePath)) {
-      return next(new AppError('Barcode image file not found', 404));
+exports.generateBarcodePreview = async (req, res, next) => {
+  try {
+    const { dealerCode, fixtureNo } = req.body;
+
+    if (!dealerCode || !fixtureNo) {
+      return next(new AppError('Dealer code and fixture number are required', 400));
     }
 
-    res.download(filePath, `${asset.assetNo}_barcode.png`);
+    const barcodeValue = generateBarcodeValue(dealerCode, fixtureNo);
+    const barcodeImage = await generateBarcodeImage(barcodeValue);
+
+    const appUrl = process.env.APP_URL || 'http://localhost:5000';
+    
+    res.status(200).json({
+      success: true,
+      message: 'Barcode preview generated',
+      data: {
+        barcodeValue,
+        barcodeImageUrl: `${appUrl}/${barcodeImage.relativePath}`,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.validateBarcode = async (req, res, next) => {
+  try {
+    const { barcodeValue } = req.body;
+
+    if (!barcodeValue) {
+      return next(new AppError('Barcode value is required', 400));
+    }
+
+    const asset = await Asset.findOne({ barcodeValue: barcodeValue.toUpperCase() });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        exists: !!asset,
+        isAvailable: !asset,
+        message: asset ? 'Barcode already in use' : 'Barcode is available',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getAllBarcodesForDealer = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'ADMIN') {
+      return next(new AppError('Only admins can access this feature', 403));
+    }
+
+    const { dealerId } = req.params;
+
+    const dealer = await Dealer.findById(dealerId);
+    if (!dealer) {
+      return next(new AppError('Dealer not found', 404));
+    }
+
+    const assets = await Asset.find({ dealerId, isDeleted: false })
+      .select('fixtureNo assetNo barcodeValue barcodeImageUrl brand status createdAt')
+      .sort({ createdAt: -1 });
+
+    if (assets.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No assets found for this dealer',
+        data: {
+          dealer: {
+            dealerCode: dealer.dealerCode,
+            name: dealer.name,
+            shopName: dealer.shopName,
+          },
+          totalBarcodes: 0,
+          barcodes: [],
+        },
+      });
+    }
+
+    const barcodes = assets.map(asset => ({
+      assetId: asset._id,
+      fixtureNo: asset.fixtureNo,
+      assetNo: asset.assetNo,
+      barcodeValue: asset.barcodeValue,
+      barcodeImageUrl: asset.barcodeImageUrl,
+      brand: asset.brand,
+      status: asset.status,
+      createdAt: asset.createdAt,
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: 'Barcodes retrieved successfully',
+      data: {
+        dealer: {
+          dealerId: dealer._id,
+          dealerCode: dealer.dealerCode,
+          name: dealer.name,
+          shopName: dealer.shopName,
+          email: dealer.email,
+        },
+        totalBarcodes: barcodes.length,
+        barcodes,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -378,122 +530,90 @@ exports.downloadBarcode = async (req, res, next) => {
 
 exports.downloadAllBarcodesAsPDF = async (req, res, next) => {
   try {
-    const dealerId = req.params.dealerId;
+    if (req.user.role !== 'ADMIN') {
+      return next(new AppError('Only admins can access this feature', 403));
+    }
 
-    const dealer = await Dealer.findByPk(dealerId);
+    const { dealerId } = req.params;
+
+    const dealer = await Dealer.findById(dealerId);
     if (!dealer) {
       return next(new AppError('Dealer not found', 404));
     }
 
-    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
-    if (req.user.role === 'DEALER' && userDealerRef !== dealerId) {
-      return next(new AppError('You can only download barcodes for your own dealership', 403));
-    }
-
-    const assets = await Asset.findAll({
-      where: { dealerId, isDeleted: false },
-      attributes: ['fixtureNo', 'assetNo', 'barcodeValue', 'barcodeImagePath', 'brand', 'status'],
-      order: [['created_at', 'DESC']]
-    });
+    const assets = await Asset.find({ dealerId, isDeleted: false })
+      .select('fixtureNo assetNo barcodeValue barcodeImagePath brand status')
+      .sort({ createdAt: -1 });
 
     if (assets.length === 0) {
       return next(new AppError('No assets found for this dealer', 404));
     }
 
-    const tempDir = path.join(__dirname, '..', 'uploads', 'temp_barcodes');
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const filename = `barcodes_${dealer.dealerCode}_${Date.now()}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    doc.pipe(res);
+
+    doc.fontSize(20).text('IBTSO Asset Tracking', { align: 'center' });
+    doc.fontSize(16).text(`Barcode Collection - ${dealer.name}`, { align: 'center' });
+    doc.fontSize(12).text(`Dealer Code: ${dealer.dealerCode}`, { align: 'center' });
+    doc.fontSize(10).text(`Shop: ${dealer.shopName}`, { align: 'center' });
+    doc.fontSize(10).text(`Total Assets: ${assets.length}`, { align: 'center' });
+    doc.fontSize(8).text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+    doc.moveDown(2);
+
+    const tempDir = path.join(__dirname, '..', 'uploads', 'temp');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    const tempImages = [];
-    for (const asset of assets) {
-      const tempImagePath = path.join(tempDir, `${asset.assetNo}_${Date.now()}.png`);
-      const barcodeImage = await generateBarcodeImage(asset.barcodeValue, asset.assetNo);
-      fs.copyFileSync(path.join(__dirname, '..', barcodeImage.relativePath), tempImagePath);
-      tempImages.push({ path: tempImagePath, asset });
-    }
+    for (let i = 0; i < assets.length; i++) {
+      const asset = assets[i];
 
-    const doc = new PDFDocument({ margin: 30, size: 'A4' });
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${dealer.dealerCode}_all_barcodes.pdf"`);
-    doc.pipe(res);
-
-    const pageWidth = 595;
-    const pageHeight = 842;
-    const margin = 30;
-    const headerHeight = 80;
-    
-    const cols = 3;
-    const rows = 3;
-    const codesPerPage = cols * rows;
-    
-    const usableWidth = pageWidth - (2 * margin);
-    const usableHeight = pageHeight - (2 * margin) - headerHeight;
-    
-    const cellWidth = usableWidth / cols;
-    const cellHeight = usableHeight / rows;
-    
-    const qrSize = Math.min(cellWidth, cellHeight) - 30;
-    
-    let currentPage = -1;
-    
-    for (let i = 0; i < tempImages.length; i++) {
-      const { path: imgPath, asset } = tempImages[i];
-      
-      const pageIndex = Math.floor(i / codesPerPage);
-      const positionOnPage = i % codesPerPage;
-      
-      if (pageIndex !== currentPage) {
-        if (currentPage >= 0) {
-          doc.addPage();
-        }
-        currentPage = pageIndex;
-        
-        doc.fontSize(16).font('Helvetica-Bold').text('Asset Barcodes', margin, margin, { align: 'center', width: usableWidth });
-        doc.fontSize(10).font('Helvetica').text(`Dealer: ${dealer.name} (${dealer.dealerCode})`, margin, margin + 22, { align: 'center', width: usableWidth });
-        doc.fontSize(8).font('Helvetica').text(`Generated: ${moment().format('DD MMM YYYY, hh:mm A')} | Page ${currentPage + 1}`, margin, margin + 38, { align: 'center', width: usableWidth });
+      if (i > 0 && i % 3 === 0) {
+        doc.addPage();
       }
-      
-      const col = positionOnPage % cols;
-      const row = Math.floor(positionOnPage / cols);
-      
-      const xPos = margin + (col * cellWidth);
-      const yPos = margin + headerHeight + (row * cellHeight);
-      
-      const centerX = xPos + (cellWidth / 2);
-      const centerY = yPos + (cellHeight / 2);
-      
-      doc.fontSize(8).font('Helvetica-Bold').text(asset.assetNo, xPos, yPos + 5, { width: cellWidth, align: 'center' });
-      doc.fontSize(7).font('Helvetica').text(`${asset.fixtureNo}`, xPos, yPos + 18, { width: cellWidth, align: 'center' });
-      
+
+      doc.fontSize(10).text(`Asset #${i + 1}`, { underline: true });
+      doc.fontSize(9).text(`Fixture No: ${asset.fixtureNo}`);
+      doc.fontSize(9).text(`Asset No: ${asset.assetNo}`);
+      doc.fontSize(9).text(`Brand: ${asset.brand}`);
+      doc.fontSize(9).text(`Status: ${asset.status}`);
+      doc.fontSize(8).text(`Barcode: ${asset.barcodeValue}`);
+
       try {
-        const imgX = centerX - (qrSize / 2);
-        const imgY = yPos + 30;
-        doc.image(imgPath, imgX, imgY, { width: qrSize, height: qrSize });
+        const tempBarcode = await generateBarcodeImage(asset.barcodeValue, asset.assetNo);
+        const tempImagePath = tempBarcode.filepath;
+
+        if (fs.existsSync(tempImagePath)) {
+          doc.image(tempImagePath, {
+            fit: [400, 150],
+            align: 'center',
+          });
+          
+          fs.unlinkSync(tempImagePath);
+        } else {
+          doc.fontSize(8).fillColor('red').text('Barcode image generation failed', { align: 'center' });
+          doc.fillColor('black');
+        }
       } catch (err) {
-        console.error(`Error adding image for ${asset.assetNo}:`, err);
+        console.error('PDF barcode generation error:', err);
+        doc.fontSize(8).fillColor('red').text('Error generating barcode image', { align: 'center' });
+        doc.fillColor('black');
+      }
+
+      doc.moveDown(1.5);
+      
+      if (i < assets.length - 1 && (i + 1) % 3 !== 0) {
+        doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+        doc.moveDown(0.5);
       }
     }
 
     doc.end();
-
-    doc.on('finish', () => {
-      tempImages.forEach(({ path: imgPath }) => {
-        try {
-          fs.unlinkSync(imgPath);
-        } catch (err) {
-          console.error(`Error deleting temp file ${imgPath}:`, err);
-        }
-      });
-
-      try {
-        fs.rmdirSync(tempDir);
-      } catch (err) {
-        console.error('Error deleting temp directory:', err);
-      }
-    });
-
   } catch (error) {
     next(error);
   }
@@ -501,69 +621,82 @@ exports.downloadAllBarcodesAsPDF = async (req, res, next) => {
 
 exports.downloadAllBarcodesAsZIP = async (req, res, next) => {
   try {
-    const dealerId = req.params.dealerId;
+    if (req.user.role !== 'ADMIN') {
+      return next(new AppError('Only admins can access this feature', 403));
+    }
 
-    const dealer = await Dealer.findByPk(dealerId);
+    const { dealerId } = req.params;
+
+    const dealer = await Dealer.findById(dealerId);
     if (!dealer) {
       return next(new AppError('Dealer not found', 404));
     }
 
-    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
-    if (req.user.role === 'DEALER' && userDealerRef !== dealerId) {
-      return next(new AppError('You can only download barcodes for your own dealership', 403));
-    }
-
-    const assets = await Asset.findAll({
-      where: { dealerId, isDeleted: false },
-      attributes: ['fixtureNo', 'assetNo', 'barcodeValue', 'barcodeImagePath', 'brand'],
-      order: [['created_at', 'DESC']]
-    });
+    const assets = await Asset.find({ dealerId, isDeleted: false })
+      .select('fixtureNo assetNo barcodeValue barcodeImagePath brand')
+      .sort({ createdAt: -1 });
 
     if (assets.length === 0) {
       return next(new AppError('No assets found for this dealer', 404));
     }
 
-    const tempDir = path.join(__dirname, '..', 'uploads', 'temp_barcodes');
+    const filename = `barcodes_${dealer.dealerCode}_${Date.now()}.zip`;
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    archive.on('error', (err) => {
+      return next(new AppError(`Error creating ZIP file: ${err.message}`, 500));
+    });
+
+    archive.pipe(res);
+
+    const metadataContent = `IBTSO Asset Tracking - Barcode Collection\n` +
+      `Dealer: ${dealer.name}\n` +
+      `Dealer Code: ${dealer.dealerCode}\n` +
+      `Shop: ${dealer.shopName}\n` +
+      `Email: ${dealer.email}\n` +
+      `Total Assets: ${assets.length}\n` +
+      `Generated: ${new Date().toLocaleString()}\n\n` +
+      `Asset List:\n` +
+      assets.map((a, i) => 
+        `${i + 1}. ${a.assetNo} - ${a.fixtureNo} - ${a.brand} - ${a.barcodeValue}`
+      ).join('\n');
+
+    archive.append(metadataContent, { name: 'README.txt' });
+
+    const tempDir = path.join(__dirname, '..', 'uploads', 'temp');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    const tempImages = [];
     for (const asset of assets) {
-      const tempImagePath = path.join(tempDir, `${asset.assetNo}_${Date.now()}.png`);
-      const barcodeImage = await generateBarcodeImage(asset.barcodeValue, asset.assetNo);
-      fs.copyFileSync(path.join(__dirname, '..', barcodeImage.relativePath), tempImagePath);
-      tempImages.push({ path: tempImagePath, filename: `${asset.assetNo}_${asset.fixtureNo}.png` });
-    }
-
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${dealer.dealerCode}_all_barcodes.zip"`);
-
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    archive.pipe(res);
-
-    for (const { path: imgPath, filename } of tempImages) {
-      archive.file(imgPath, { name: filename });
-    }
-
-    await archive.finalize();
-
-    archive.on('end', () => {
-      tempImages.forEach(({ path: imgPath }) => {
-        try {
-          fs.unlinkSync(imgPath);
-        } catch (err) {
-          console.error(`Error deleting temp file ${imgPath}:`, err);
-        }
-      });
-
       try {
-        fs.rmdirSync(tempDir);
+        const tempBarcode = await generateBarcodeImage(asset.barcodeValue, asset.assetNo);
+        const tempImagePath = tempBarcode.filepath;
+        
+        if (fs.existsSync(tempImagePath)) {
+          const cleanFileName = `${asset.assetNo}_${asset.fixtureNo}.png`.replace(/[^a-zA-Z0-9_.-]/g, '_');
+          archive.file(tempImagePath, { name: cleanFileName });
+          
+          setTimeout(() => {
+            try {
+              if (fs.existsSync(tempImagePath)) {
+                fs.unlinkSync(tempImagePath);
+              }
+            } catch (err) {
+              console.log('Temp file cleanup error:', err.message);
+            }
+          }, 1000);
+        }
       } catch (err) {
-        console.error('Error deleting temp directory:', err);
+        console.error('ZIP barcode generation error for asset:', asset.assetNo, err);
       }
-    });
+    }
 
+    archive.finalize();
   } catch (error) {
     next(error);
   }

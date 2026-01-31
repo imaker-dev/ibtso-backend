@@ -1,6 +1,5 @@
-const Asset = require('../models/Asset');
-const Dealer = require('../models/Dealer');
-const User = require('../models/User');
+const { Asset, Dealer, User } = require('../models');
+const { Op } = require('sequelize');
 const { AppError } = require('../middleware/errorHandler');
 const { 
   generateBarcodeValue, 
@@ -18,10 +17,11 @@ exports.createAsset = async (req, res, next) => {
       brand,
       dealerId,
       installationDate,
+      location,
       status,
     } = req.body;
 
-    const dealer = await Dealer.findById(dealerId);
+    const dealer = await Dealer.findByPk(dealerId);
     if (!dealer) {
       return next(new AppError('Dealer not found', 404));
     }
@@ -30,16 +30,17 @@ exports.createAsset = async (req, res, next) => {
       return next(new AppError('Cannot create asset for inactive dealer', 400));
     }
 
-    if (req.user.role === 'DEALER' && req.user.dealerRef.toString() !== dealerId) {
+    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
+    if (req.user.role === 'DEALER' && userDealerRef !== dealerId) {
       return next(new AppError('You can only create assets for your own dealership', 403));
     }
 
-    const existingAsset = await Asset.findOne({ assetNo });
+    const existingAsset = await Asset.findOne({ where: { assetNo } });
     if (existingAsset) {
       return next(new AppError('Asset number already exists', 400));
     }
 
-    const duplicateFixture = await Asset.findOne({ fixtureNo, dealerId });
+    const duplicateFixture = await Asset.findOne({ where: { fixtureNo, dealerId } });
     if (duplicateFixture) {
       return next(new AppError('Fixture number already exists for this dealer', 400));
     }
@@ -65,8 +66,7 @@ exports.createAsset = async (req, res, next) => {
 
     const barcodeImage = await generateBarcodeImage(barcodeValue, assetNo);
 
-    // Always use dealer's location for the asset
-    const assetLocation = {
+    const assetLocation = location || {
       address: dealer.location.address,
       latitude: dealer.location.latitude,
       longitude: dealer.location.longitude,
@@ -88,9 +88,12 @@ exports.createAsset = async (req, res, next) => {
       createdBy: req.user._id || req.user.id,
     });
 
-    const populatedAsset = await Asset.findById(asset._id)
-      .populate('dealerId', 'dealerCode name shopName')
-      .populate('createdBy', 'name email');
+    const populatedAsset = await Asset.findByPk(asset.id, {
+      include: [
+        { model: Dealer, as: 'dealer', attributes: ['dealerCode', 'name', 'shopName'] },
+        { model: User, as: 'creator', attributes: ['name', 'email'] }
+      ]
+    });
 
     res.status(201).json({
       success: true,
@@ -115,47 +118,52 @@ exports.getAllAssets = async (req, res, next) => {
       endDate 
     } = req.query;
 
-    const query = {};
+    const where = {};
 
+    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
     if (req.user.role === 'DEALER') {
-      query.dealerId = req.user.dealerRef;
+      where.dealerId = userDealerRef;
     }
 
     if (dealerId && req.user.role === 'ADMIN') {
-      query.dealerId = dealerId;
+      where.dealerId = dealerId;
     }
 
     if (search) {
-      query.$or = [
-        { fixtureNo: { $regex: search, $options: 'i' } },
-        { assetNo: { $regex: search, $options: 'i' } },
-        { brand: { $regex: search, $options: 'i' } },
-        { barcodeValue: { $regex: search, $options: 'i' } },
+      where[Op.or] = [
+        { fixtureNo: { [Op.iLike]: `%${search}%` } },
+        { assetNo: { [Op.iLike]: `%${search}%` } },
+        { brand: { [Op.iLike]: `%${search}%` } },
+        { barcodeValue: { [Op.iLike]: `%${search}%` } },
       ];
     }
 
     if (brand) {
-      query.brand = { $regex: brand, $options: 'i' };
+      where.brand = { [Op.iLike]: `%${brand}%` };
     }
 
     if (status) {
-      query.status = status;
+      where.status = status;
     }
 
     if (startDate || endDate) {
-      query.installationDate = {};
-      if (startDate) query.installationDate.$gte = new Date(startDate);
-      if (endDate) query.installationDate.$lte = new Date(endDate);
+      where.installationDate = {};
+      if (startDate) where.installationDate[Op.gte] = new Date(startDate);
+      if (endDate) where.installationDate[Op.lte] = new Date(endDate);
     }
 
-    const total = await Asset.countDocuments(query);
-    const assets = await Asset.find(query)
-      .populate('dealerId', 'dealerCode name shopName email')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    const total = await Asset.count({ where });
+    const assets = await Asset.findAll({
+      where,
+      include: [
+        { model: Dealer, as: 'dealer', attributes: ['dealerCode', 'name', 'shopName', 'email'] },
+        { model: User, as: 'creator', attributes: ['name', 'email'] },
+        { model: User, as: 'updater', attributes: ['name', 'email'] }
+      ],
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset: (page - 1) * limit
+    });
 
     res.status(200).json({
       success: true,
@@ -172,16 +180,20 @@ exports.getAllAssets = async (req, res, next) => {
 
 exports.getAssetById = async (req, res, next) => {
   try {
-    const asset = await Asset.findById(req.params.id)
-      .populate('dealerId', 'dealerCode name shopName email phone location')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email');
+    const asset = await Asset.findByPk(req.params.id, {
+      include: [
+        { model: Dealer, as: 'dealer', attributes: ['dealerCode', 'name', 'shopName', 'email', 'phone', 'location'] },
+        { model: User, as: 'creator', attributes: ['name', 'email'] },
+        { model: User, as: 'updater', attributes: ['name', 'email'] }
+      ]
+    });
 
     if (!asset) {
       return next(new AppError('Asset not found', 404));
     }
 
-    if (req.user.role === 'DEALER' && asset.dealerId._id.toString() !== req.user.dealerRef.toString()) {
+    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
+    if (req.user.role === 'DEALER' && asset.dealerId !== userDealerRef) {
       return next(new AppError('You do not have permission to access this asset', 403));
     }
 
@@ -196,13 +208,14 @@ exports.getAssetById = async (req, res, next) => {
 
 exports.updateAsset = async (req, res, next) => {
   try {
-    const asset = await Asset.findById(req.params.id);
+    const asset = await Asset.findByPk(req.params.id);
 
     if (!asset) {
       return next(new AppError('Asset not found', 404));
     }
 
-    if (req.user.role === 'DEALER' && asset.dealerId.toString() !== req.user.dealerRef.toString()) {
+    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
+    if (req.user.role === 'DEALER' && asset.dealerId !== userDealerRef) {
       return next(new AppError('You can only update your own assets', 403));
     }
 
@@ -213,11 +226,17 @@ exports.updateAsset = async (req, res, next) => {
       standType,
       brand,
       installationDate,
+      location,
       status,
     } = req.body;
 
     if (assetNo && assetNo !== asset.assetNo) {
-      const existingAsset = await Asset.findOne({ assetNo, _id: { $ne: asset._id } });
+      const existingAsset = await Asset.findOne({ 
+        where: { 
+          assetNo,
+          id: { [Op.ne]: asset.id }
+        } 
+      });
       if (existingAsset) {
         return next(new AppError('Asset number already exists', 400));
       }
@@ -225,9 +244,11 @@ exports.updateAsset = async (req, res, next) => {
 
     if (fixtureNo && fixtureNo !== asset.fixtureNo) {
       const duplicateFixture = await Asset.findOne({ 
-        fixtureNo, 
-        dealerId: asset.dealerId,
-        _id: { $ne: asset._id }
+        where: {
+          fixtureNo, 
+          dealerId: asset.dealerId,
+          id: { [Op.ne]: asset.id }
+        }
       });
       if (duplicateFixture) {
         return next(new AppError('Fixture number already exists for this dealer', 400));
@@ -247,16 +268,19 @@ exports.updateAsset = async (req, res, next) => {
     if (dimension) asset.dimension = dimension;
     if (standType) asset.standType = standType;
     if (brand) asset.brand = brand;
+    if (location) asset.location = location;
     if (status) asset.status = status;
-    // Location is always synced from dealer, not updated directly
     
-    asset.updatedBy = req.user._id;
+    asset.updatedBy = req.user._id || req.user.id;
     await asset.save();
 
-    const updatedAsset = await Asset.findById(asset._id)
-      .populate('dealerId', 'dealerCode name shopName')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email');
+    const updatedAsset = await Asset.findByPk(asset.id, {
+      include: [
+        { model: Dealer, as: 'dealer', attributes: ['dealerCode', 'name', 'shopName'] },
+        { model: User, as: 'creator', attributes: ['name', 'email'] },
+        { model: User, as: 'updater', attributes: ['name', 'email'] }
+      ]
+    });
 
     res.status(200).json({
       success: true,
@@ -270,7 +294,7 @@ exports.updateAsset = async (req, res, next) => {
 
 exports.deleteAsset = async (req, res, next) => {
   try {
-    const asset = await Asset.findById(req.params.id);
+    const asset = await Asset.findByPk(req.params.id);
 
     if (!asset) {
       return next(new AppError('Asset not found', 404));
@@ -281,7 +305,7 @@ exports.deleteAsset = async (req, res, next) => {
     }
 
     asset.isDeleted = true;
-    asset.updatedBy = req.user._id;
+    asset.updatedBy = req.user._id || req.user.id;
     await asset.save();
 
     res.status(200).json({
@@ -301,18 +325,19 @@ exports.updateAssetStatus = async (req, res, next) => {
       return next(new AppError('Invalid status value', 400));
     }
 
-    const asset = await Asset.findById(req.params.id);
+    const asset = await Asset.findByPk(req.params.id);
 
     if (!asset) {
       return next(new AppError('Asset not found', 404));
     }
 
-    if (req.user.role === 'DEALER' && asset.dealerId.toString() !== req.user.dealerRef.toString()) {
+    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
+    if (req.user.role === 'DEALER' && asset.dealerId !== userDealerRef) {
       return next(new AppError('You can only update your own assets', 403));
     }
 
     asset.status = status;
-    asset.updatedBy = req.user._id;
+    asset.updatedBy = req.user._id || req.user.id;
     await asset.save();
 
     res.status(200).json({
@@ -330,22 +355,27 @@ exports.getAssetsByDealer = async (req, res, next) => {
     const { page = 1, limit = 10 } = req.query;
     const dealerId = req.params.dealerId;
 
-    if (req.user.role === 'DEALER' && req.user.dealerRef.toString() !== dealerId) {
+    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
+    if (req.user.role === 'DEALER' && userDealerRef !== dealerId) {
       return next(new AppError('You can only view your own assets', 403));
     }
 
-    const dealer = await Dealer.findById(dealerId);
+    const dealer = await Dealer.findByPk(dealerId);
     if (!dealer) {
       return next(new AppError('Dealer not found', 404));
     }
 
-    const total = await Asset.countDocuments({ dealerId });
-    const assets = await Asset.find({ dealerId })
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    const total = await Asset.count({ where: { dealerId } });
+    const assets = await Asset.findAll({
+      where: { dealerId },
+      include: [
+        { model: User, as: 'creator', attributes: ['name', 'email'] },
+        { model: User, as: 'updater', attributes: ['name', 'email'] }
+      ],
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset: (page - 1) * limit
+    });
 
     res.status(200).json({
       success: true,
@@ -367,18 +397,25 @@ exports.getAssetsByDealer = async (req, res, next) => {
 
 exports.getAssetBrands = async (req, res, next) => {
   try {
-    const query = {};
+    const where = {};
     
+    const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
     if (req.user.role === 'DEALER') {
-      query.dealerId = req.user.dealerRef;
+      where.dealerId = userDealerRef;
     }
 
-    const brands = await Asset.distinct('brand', query);
+    const assets = await Asset.findAll({
+      where,
+      attributes: [[Asset.sequelize.fn('DISTINCT', Asset.sequelize.col('brand')), 'brand']],
+      raw: true
+    });
+
+    const brands = assets.map(a => a.brand).filter(Boolean).sort();
 
     res.status(200).json({
       success: true,
       count: brands.length,
-      data: brands.sort(),
+      data: brands,
     });
   } catch (error) {
     next(error);

@@ -1,4 +1,7 @@
-const { sequelize, User, Dealer, Asset } = require('./models');
+// OLD SEQUELIZE SCRIPT - Use reset-database-mongodb.js instead
+const User = require('./models/User');
+const Dealer = require('./models/Dealer');
+const Asset = require('./models/Asset');
 require('dotenv').config();
 
 async function resetDatabase() {

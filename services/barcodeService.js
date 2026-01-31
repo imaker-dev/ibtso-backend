@@ -122,14 +122,12 @@ const regenerateBarcode = async (oldBarcodeImagePath, newBarcodeValue, assetNo =
 };
 
 const checkBarcodeUniqueness = async (Asset, barcodeValue, excludeAssetId = null) => {
-  const { Op } = require('sequelize');
-  
-  const where = { barcodeValue };
+  const query = { barcodeValue };
   if (excludeAssetId) {
-    where.id = { [Op.ne]: excludeAssetId };
+    query._id = { $ne: excludeAssetId };
   }
   
-  const existing = await Asset.findOne({ where });
+  const existing = await Asset.findOne(query);
   return !existing;
 };
 

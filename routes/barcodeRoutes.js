@@ -5,7 +5,6 @@ const {
   scanBarcodePublic,
   regenerateBarcodeForAsset,
   downloadBarcode,
-  checkBarcodeAvailability,
   downloadAllBarcodesAsPDF,
   downloadAllBarcodesAsZIP,
 } = require('../controllers/barcodeController');
@@ -21,7 +20,7 @@ router.get('/download/:assetId', downloadBarcode);
 
 router.post('/regenerate/:assetId', restrictTo('ADMIN'), regenerateBarcodeForAsset);
 
-router.get('/check/:barcodeValue', checkBarcodeAvailability);
+// router.get('/check/:barcodeValue', checkBarcodeAvailability); // Function not implemented
 
 router.get('/dealer/:dealerId/download-pdf', restrictTo('ADMIN'), downloadAllBarcodesAsPDF);
 

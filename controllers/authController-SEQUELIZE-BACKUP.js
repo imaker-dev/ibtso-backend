@@ -1,5 +1,4 @@
-const User = require('../models/User');
-const Dealer = require('../models/Dealer');
+const { User, Dealer } = require('../models');
 const { sendTokenResponse } = require('../utils/jwtToken');
 const { AppError } = require('../middleware/errorHandler');
 
@@ -7,7 +6,10 @@ exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ 
+      where: { email },
+      attributes: { include: ['password'] }
+    });
 
     if (!user || !(await user.matchPassword(password))) {
       return next(new AppError('Invalid email or password', 401));
@@ -42,7 +44,9 @@ exports.changePassword = async (req, res, next) => {
       return next(new AppError('Password must be at least 6 characters', 400));
     }
 
-    const user = await User.findById(req.user._id).select('+password');
+    const user = await User.findByPk(req.user._id || req.user.id, {
+      attributes: { include: ['password'] }
+    });
 
     if (!(await user.matchPassword(currentPassword))) {
       return next(new AppError('Current password is incorrect', 401));
@@ -60,7 +64,9 @@ exports.changePassword = async (req, res, next) => {
 
 exports.getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id).populate('dealerRef');
+    const user = await User.findByPk(req.user._id || req.user.id, {
+      include: [{ model: Dealer, as: 'dealer', required: false }]
+    });
 
     res.status(200).json({
       success: true,
@@ -75,7 +81,7 @@ exports.updateProfile = async (req, res, next) => {
   try {
     const { name, email } = req.body;
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findByPk(req.user._id || req.user.id);
     if (!user) {
       return next(new AppError('User not found', 404));
     }

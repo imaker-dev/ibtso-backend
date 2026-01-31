@@ -1,12 +1,10 @@
-const { User } = require('../models');
+const User = require('../models/User');
 
 const createDefaultAdmin = async () => {
   try {
     const adminExists = await User.findOne({ 
-      where: {
-        email: process.env.DEFAULT_ADMIN_EMAIL || 'admin@ibtso.com',
-        role: 'ADMIN'
-      }
+      email: process.env.DEFAULT_ADMIN_EMAIL || 'admin@ibtso.com',
+      role: 'ADMIN'
     });
 
     if (!adminExists) {

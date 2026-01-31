@@ -7,14 +7,14 @@ const generateToken = (id) => {
 };
 
 const sendTokenResponse = (user, statusCode, res, message = 'Success') => {
-  const token = generateToken(user.id);
+  const token = generateToken(user._id);
 
   const userResponse = {
-    id: user.id,
+    _id: user._id,
     name: user.name,
     email: user.email,
     role: user.role,
-    dealerRef: user.dealerRef || user.dealer_ref,
+    dealerRef: user.dealerRef,
     isTemporaryPassword: user.isTemporaryPassword,
   };
 

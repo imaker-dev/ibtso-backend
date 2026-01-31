@@ -44,19 +44,11 @@ const createDealerValidation = [
     .trim()
     .notEmpty()
     .withMessage('Address is required'),
-  body('location.latitude')
-    .optional()
-    .isFloat({ min: -90, max: 90 })
-    .withMessage('Latitude must be between -90 and 90'),
-  body('location.longitude')
-    .optional()
-    .isFloat({ min: -180, max: 180 })
-    .withMessage('Longitude must be between -180 and 180'),
   validate,
 ];
 
 const updateDealerValidation = [
-  param('id').isUUID().withMessage('Invalid dealer ID'),
+  param('id').isMongoId().withMessage('Invalid dealer ID'),
   validate,
 ];
 
@@ -83,27 +75,13 @@ const createAssetValidation = [
   body('dealerId')
     .notEmpty()
     .withMessage('Dealer ID is required')
-    .isUUID()
+    .isMongoId()
     .withMessage('Invalid dealer ID'),
   body('installationDate')
     .notEmpty()
     .withMessage('Installation date is required')
     .isISO8601()
     .withMessage('Invalid date format'),
-  body('location.address')
-    .trim()
-    .notEmpty()
-    .withMessage('Address is required'),
-  body('location.latitude')
-    .notEmpty()
-    .withMessage('Latitude is required')
-    .isFloat({ min: -90, max: 90 })
-    .withMessage('Latitude must be between -90 and 90'),
-  body('location.longitude')
-    .notEmpty()
-    .withMessage('Longitude is required')
-    .isFloat({ min: -180, max: 180 })
-    .withMessage('Longitude must be between -180 and 180'),
   validate,
 ];
 

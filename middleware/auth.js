@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { User } = require('../models');
+const User = require('../models/User');
 const { AppError } = require('./errorHandler');
 
 exports.protect = async (req, res, next) => {
@@ -21,9 +21,7 @@ exports.protect = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const currentUser = await User.findByPk(decoded.id, {
-      attributes: { include: ['password'] }
-    });
+    const currentUser = await User.findById(decoded.id).select('+password');
 
     if (!currentUser) {
       return next(
@@ -80,21 +78,21 @@ exports.checkOwnership = (Model, resourceParam = 'id') => {
         return next();
       }
 
-      const resource = await Model.findByPk(req.params[resourceParam]);
+      const resource = await Model.findById(req.params[resourceParam]);
 
       if (!resource) {
         return next(new AppError('Resource not found', 404));
       }
 
       if (req.user.role === 'DEALER') {
-        const userDealerRef = req.user.dealerRef || req.user.dealer_ref;
-        if (resource.dealerId && resource.dealerId !== userDealerRef) {
+        const userDealerRef = req.user.dealerRef;
+        if (resource.dealerId && resource.dealerId.toString() !== userDealerRef.toString()) {
           return next(
             new AppError('You do not have permission to access this resource', 403)
           );
         }
         
-        if (resource.id && resource.id !== userDealerRef) {
+        if (resource._id && resource._id.toString() !== userDealerRef.toString()) {
           return next(
             new AppError('You do not have permission to access this resource', 403)
           );
