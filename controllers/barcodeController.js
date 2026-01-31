@@ -22,6 +22,7 @@ exports.scanBarcodePublic = async (req, res, next) => {
       .populate('updatedBy', 'name email');
 
     if (!asset) {
+      console.log('Asset not found for barcode:', asset.dimension );
       return res.status(404).send(`
         <!DOCTYPE html>
         <html>
@@ -133,7 +134,7 @@ exports.scanBarcodePublic = async (req, res, next) => {
                 </div>
                 <div class="info-item" style="grid-column: 1 / -1;">
                   <div class="info-label">Dimension</div>
-                  <div class="info-value">${asset.dimension || 'N/A'}</div>
+                  <div class="info-value">${asset.dimension.length  || 'N/A'}(L) × ${asset.dimension.height || 'N/A'}(H) × ${asset.dimension.depth || 'N/A'}(D) ${asset.dimension.unit || 'N/A'}</div>
                 </div>
                 <div class="info-item" style="grid-column: 1 / -1;">
                   <div class="info-label">Dealer</div>
@@ -174,11 +175,11 @@ exports.scanBarcodePublic = async (req, res, next) => {
                 </div>
                 <div class="info-item">
                   <div class="info-label">Latitude</div>
-                  <div class="info-value">${asset.location.latitude}</div>
+                  <div class="info-value">${asset.location.latitude == undefined ? 'N/A' : asset.location.latitude}</div>
                 </div>
                 <div class="info-item">
                   <div class="info-label">Longitude</div>
-                  <div class="info-value">${asset.location.longitude}</div>
+                  <div class="info-value">${asset.location.longitude == undefined ? 'N/A' : asset.location.longitude}</div>
                 </div>
                 ${asset.location.googleMapLink ? `
                 <div class="info-item" style="grid-column: 1 / -1;">
@@ -365,9 +366,9 @@ exports.regenerateBarcodeForAsset = async (req, res, next) => {
       return next(new AppError('Asset not found', 404));
     }
 
-    const newBarcodeValue = generateBarcodeValue(asset.dealerId.dealerCode, asset.fixtureNo);
-
-    const barcodeImage = await regenerateBarcode(asset.barcodeImagePath, newBarcodeValue, asset.assetNo);
+    const dealer = asset.dealerId;
+    const newBarcodeValue = generateBarcodeValue(dealer.dealerCode, asset.fixtureNo);
+    const barcodeImage = await regenerateBarcode(asset.barcodeImagePath, newBarcodeValue, asset.assetNo, dealer.dealerCode);
 
     asset.barcodeValue = newBarcodeValue;
     asset.barcodeImagePath = barcodeImage.relativePath;
@@ -570,46 +571,52 @@ exports.downloadAllBarcodesAsPDF = async (req, res, next) => {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
+    // 4x4 grid layout - 16 QR codes per page
+    const qrPerRow = 4;
+    const qrPerPage = 16;
+    const pageWidth = 595.28; // A4 width in points
+    const pageHeight = 841.89; // A4 height in points
+    const margin = 40;
+    const qrSize = 120; // Smaller QR for 4x4 grid
+    const spacing = 10;
+    
+    const cellWidth = (pageWidth - (2 * margin)) / qrPerRow;
+    const cellHeight = (pageHeight - 150) / qrPerRow; // Reserve 150 for header
+
     for (let i = 0; i < assets.length; i++) {
       const asset = assets[i];
 
-      if (i > 0 && i % 3 === 0) {
+      // Add new page for every 16 QRs
+      if (i > 0 && i % qrPerPage === 0) {
         doc.addPage();
       }
 
-      doc.fontSize(10).text(`Asset #${i + 1}`, { underline: true });
-      doc.fontSize(9).text(`Fixture No: ${asset.fixtureNo}`);
-      doc.fontSize(9).text(`Asset No: ${asset.assetNo}`);
-      doc.fontSize(9).text(`Brand: ${asset.brand}`);
-      doc.fontSize(9).text(`Status: ${asset.status}`);
-      doc.fontSize(8).text(`Barcode: ${asset.barcodeValue}`);
+      // Calculate position in 4x4 grid
+      const positionOnPage = i % qrPerPage;
+      const row = Math.floor(positionOnPage / qrPerRow);
+      const col = positionOnPage % qrPerRow;
+      
+      const x = margin + (col * cellWidth) + (cellWidth - qrSize) / 2;
+      const y = 150 + (row * cellHeight);
 
       try {
-        const tempBarcode = await generateBarcodeImage(asset.barcodeValue, asset.assetNo);
+        const tempBarcode = await generateBarcodeImage(asset.barcodeValue, asset.assetNo, dealer.dealerCode);
         const tempImagePath = tempBarcode.filepath;
 
         if (fs.existsSync(tempImagePath)) {
-          doc.image(tempImagePath, {
-            fit: [400, 150],
-            align: 'center',
+          doc.image(tempImagePath, x, y, {
+            fit: [qrSize, qrSize],
           });
           
           fs.unlinkSync(tempImagePath);
         } else {
-          doc.fontSize(8).fillColor('red').text('Barcode image generation failed', { align: 'center' });
+          doc.fontSize(6).fillColor('red').text('QR Error', x, y);
           doc.fillColor('black');
         }
       } catch (err) {
         console.error('PDF barcode generation error:', err);
-        doc.fontSize(8).fillColor('red').text('Error generating barcode image', { align: 'center' });
+        doc.fontSize(6).fillColor('red').text('Error', x, y);
         doc.fillColor('black');
-      }
-
-      doc.moveDown(1.5);
-      
-      if (i < assets.length - 1 && (i + 1) % 3 !== 0) {
-        doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
-        doc.moveDown(0.5);
       }
     }
 
@@ -674,7 +681,7 @@ exports.downloadAllBarcodesAsZIP = async (req, res, next) => {
 
     for (const asset of assets) {
       try {
-        const tempBarcode = await generateBarcodeImage(asset.barcodeValue, asset.assetNo);
+        const tempBarcode = await generateBarcodeImage(asset.barcodeValue, asset.assetNo, dealer.dealerCode);
         const tempImagePath = tempBarcode.filepath;
         
         if (fs.existsSync(tempImagePath)) {
