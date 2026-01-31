@@ -139,7 +139,7 @@ exports.getDealerById = async (req, res, next) => {
 
 exports.updateDealer = async (req, res, next) => {
   try {
-    const { name, phone, shopName, vatRegistration, location, isActive } = req.body;
+    const { name, phone, shopName, vatRegistration, location, isActive, email } = req.body;
 
     const dealer = await Dealer.findById(req.params.id);
 

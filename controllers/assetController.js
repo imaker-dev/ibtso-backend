@@ -63,7 +63,7 @@ exports.createAsset = async (req, res, next) => {
       return next(new AppError('Failed to generate unique barcode. Please try again.', 500));
     }
 
-    const barcodeImage = await generateBarcodeImage(barcodeValue, assetNo);
+    const barcodeImage = await generateBarcodeImage(barcodeValue, assetNo, dealer.dealerCode);
 
     // Always use dealer's location for the asset
     const assetLocation = {

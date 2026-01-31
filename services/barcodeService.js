@@ -10,7 +10,7 @@ const generateBarcodeValue = (dealerCode, fixtureNo) => {
   return `${dealerCode}-${fixtureNo}-${year}${timestamp}`.toUpperCase();
 };
 
-const generateBarcodeImage = async (barcodeValue, assetNo = null) => {
+const generateBarcodeImage = async (barcodeValue, assetNo = null, dealerCode = null) => {
   try {
     const uploadsDir = path.join(__dirname, '..', 'uploads', 'barcodes');
     
@@ -25,7 +25,7 @@ const generateBarcodeImage = async (barcodeValue, assetNo = null) => {
 
     const qrCodeBuffer = await QRCode.toBuffer(scanUrl, {
       type: 'png',
-      width: 250,
+      width: 180,
       margin: 1,
       color: {
         dark: '#000000',
@@ -63,7 +63,7 @@ const generateBarcodeImage = async (barcodeValue, assetNo = null) => {
     const filepath = path.join(uploadsDir, filename);
 
     if (assetNo) {
-      const textHeight = 40;
+      const textHeight = 30;
       const finalImage = new Jimp(
         qrImage.bitmap.width + 20,
         qrImage.bitmap.height + textHeight + 20,
@@ -72,14 +72,17 @@ const generateBarcodeImage = async (barcodeValue, assetNo = null) => {
       
       finalImage.composite(qrImage, 10, 10);
       
-      const font = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
+      const font = await Jimp.loadFont(Jimp.FONT_SANS_12_BLACK);
+      
+      // Show dealer code prefix + asset number
+      const displayText = dealerCode ? `${dealerCode}-${assetNo}` : assetNo;
       
       finalImage.print(
         font,
         0,
-        qrImage.bitmap.height + 15,
+        qrImage.bitmap.height + 12,
         {
-          text: assetNo,
+          text: displayText,
           alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER,
           alignmentY: Jimp.VERTICAL_ALIGN_MIDDLE
         },
@@ -104,7 +107,7 @@ const generateBarcodeImage = async (barcodeValue, assetNo = null) => {
   }
 };
 
-const regenerateBarcode = async (oldBarcodeImagePath, newBarcodeValue, assetNo = null) => {
+const regenerateBarcode = async (oldBarcodeImagePath, newBarcodeValue, assetNo = null, dealerCode = null) => {
   try {
     if (oldBarcodeImagePath) {
       const oldPath = path.join(__dirname, '..', oldBarcodeImagePath);
@@ -115,7 +118,7 @@ const regenerateBarcode = async (oldBarcodeImagePath, newBarcodeValue, assetNo =
       }
     }
 
-    return await generateBarcodeImage(newBarcodeValue, assetNo);
+    return await generateBarcodeImage(newBarcodeValue, assetNo, dealerCode);
   } catch (error) {
     throw new Error(`Failed to regenerate barcode: ${error.message}`);  
   }
