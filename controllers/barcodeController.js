@@ -536,14 +536,30 @@ exports.downloadAllBarcodesAsPDF = async (req, res, next) => {
     }
 
     const { dealerId } = req.params;
+    const { startDate, endDate } = req.query;
 
     const dealer = await Dealer.findById(dealerId);
     if (!dealer) {
       return next(new AppError('Dealer not found', 404));
     }
 
-    const assets = await Asset.find({ dealerId, isDeleted: false })
-      .select('fixtureNo assetNo barcodeValue barcodeImagePath brand status')
+    // Build query with optional date range
+    const query = { dealerId, isDeleted: false };
+    
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        query.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    const assets = await Asset.find(query)
+      .select('fixtureNo assetNo barcodeValue barcodeImagePath brand status createdAt')
       .sort({ createdAt: -1 });
 
     if (assets.length === 0) {
@@ -562,6 +578,10 @@ exports.downloadAllBarcodesAsPDF = async (req, res, next) => {
     doc.fontSize(16).text(`Barcode Collection - ${dealer.name}`, { align: 'center' });
     doc.fontSize(12).text(`Dealer Code: ${dealer.dealerCode}`, { align: 'center' });
     doc.fontSize(10).text(`Shop: ${dealer.shopName}`, { align: 'center' });
+    if (startDate || endDate) {
+      const dateRangeText = `Date Range: ${startDate ? new Date(startDate).toLocaleDateString() : 'All'} to ${endDate ? new Date(endDate).toLocaleDateString() : 'All'}`;
+      doc.fontSize(9).text(dateRangeText, { align: 'center' });
+    }
     doc.fontSize(10).text(`Total Assets: ${assets.length}`, { align: 'center' });
     doc.fontSize(8).text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
     doc.moveDown(2);
@@ -704,6 +724,242 @@ exports.downloadAllBarcodesAsZIP = async (req, res, next) => {
     }
 
     archive.finalize();
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Download ALL assets PDF (admin only) - with date range filter
+exports.downloadAllAssetsPDF = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'ADMIN') {
+      return next(new AppError('Only admins can access this feature', 403));
+    }
+
+    const { startDate, endDate } = req.query;
+
+    const query = { isDeleted: false };
+    
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        query.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    const assets = await Asset.find(query)
+      .select('fixtureNo assetNo barcodeValue barcodeImagePath brand status dealerId createdAt')
+      .populate('dealerId', 'dealerCode name shopName')
+      .sort({ createdAt: -1 });
+
+    if (assets.length === 0) {
+      return next(new AppError('No assets found', 404));
+    }
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const filename = `all_barcodes_${Date.now()}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    doc.pipe(res);
+
+    doc.fontSize(20).text('IBTSO Asset Tracking', { align: 'center' });
+    doc.fontSize(16).text('All Assets Barcode Collection', { align: 'center' });
+    if (startDate || endDate) {
+      const dateRangeText = `Date Range: ${startDate ? new Date(startDate).toLocaleDateString() : 'All'} to ${endDate ? new Date(endDate).toLocaleDateString() : 'All'}`;
+      doc.fontSize(9).text(dateRangeText, { align: 'center' });
+    }
+    doc.fontSize(10).text(`Total Assets: ${assets.length}`, { align: 'center' });
+    doc.fontSize(8).text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+    doc.moveDown(2);
+
+    const tempDir = path.join(__dirname, '..', 'uploads', 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const qrPerRow = 4;
+    const qrPerPage = 16;
+    const pageWidth = 595.28;
+    const pageHeight = 841.89;
+    const margin = 40;
+    const qrSize = 120;
+    
+    const cellWidth = (pageWidth - (2 * margin)) / qrPerRow;
+    const cellHeight = (pageHeight - 150) / qrPerRow;
+
+    for (let i = 0; i < assets.length; i++) {
+      const asset = assets[i];
+
+      if (i > 0 && i % qrPerPage === 0) {
+        doc.addPage();
+      }
+
+      const positionOnPage = i % qrPerPage;
+      const row = Math.floor(positionOnPage / qrPerRow);
+      const col = positionOnPage % qrPerRow;
+      
+      const x = margin + (col * cellWidth) + (cellWidth - qrSize) / 2;
+      const y = 150 + (row * cellHeight);
+
+      try {
+        const dealerCode = asset.dealerId ? asset.dealerId.dealerCode : 'UNKNOWN';
+        const tempBarcode = await generateBarcodeImage(asset.barcodeValue, asset.assetNo, dealerCode);
+        const tempImagePath = tempBarcode.filepath;
+
+        if (fs.existsSync(tempImagePath)) {
+          doc.image(tempImagePath, x, y, {
+            fit: [qrSize, qrSize],
+          });
+          
+          fs.unlinkSync(tempImagePath);
+        }
+      } catch (err) {
+        console.error('PDF barcode generation error:', err);
+      }
+    }
+
+    doc.end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Download single asset QR as PNG
+exports.downloadSingleAssetQR = async (req, res, next) => {
+  try {
+    const { assetId } = req.params;
+
+    const asset = await Asset.findById(assetId)
+      .populate('dealerId', 'dealerCode');
+
+    if (!asset) {
+      return next(new AppError('Asset not found', 404));
+    }
+
+    if (req.user.role === 'DEALER' && asset.dealerId._id.toString() !== req.user.dealerRef.toString()) {
+      return next(new AppError('You can only download QR codes for your own assets', 403));
+    }
+
+    const dealerCode = asset.dealerId ? asset.dealerId.dealerCode : 'UNKNOWN';
+    const barcodeImage = await generateBarcodeImage(asset.barcodeValue, asset.assetNo, dealerCode);
+    const imagePath = barcodeImage.filepath;
+
+    if (!fs.existsSync(imagePath)) {
+      return next(new AppError('QR code image not found', 404));
+    }
+
+    const filename = `QR_${asset.assetNo}_${Date.now()}.png`;
+
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    const imageBuffer = fs.readFileSync(imagePath);
+    fs.unlinkSync(imagePath);
+
+    res.send(imageBuffer);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Download multiple assets QR as PDF
+exports.downloadMultipleAssetsQR = async (req, res, next) => {
+  try {
+    const { assetIds } = req.body;
+
+    if (!assetIds || !Array.isArray(assetIds) || assetIds.length === 0) {
+      return next(new AppError('Please provide an array of asset IDs', 400));
+    }
+
+    const assets = await Asset.find({ 
+      _id: { $in: assetIds }, 
+      isDeleted: false 
+    })
+    .select('fixtureNo assetNo barcodeValue barcodeImagePath brand status dealerId')
+    .populate('dealerId', 'dealerCode name shopName')
+    .sort({ createdAt: -1 });
+
+    if (assets.length === 0) {
+      return next(new AppError('No assets found with provided IDs', 404));
+    }
+
+    if (req.user.role === 'DEALER') {
+      const unauthorizedAsset = assets.find(
+        asset => asset.dealerId._id.toString() !== req.user.dealerRef.toString()
+      );
+      if (unauthorizedAsset) {
+        return next(new AppError('You can only download QR codes for your own assets', 403));
+      }
+    }
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const filename = `selected_barcodes_${Date.now()}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    doc.pipe(res);
+
+    doc.fontSize(20).text('IBTSO Asset Tracking', { align: 'center' });
+    doc.fontSize(16).text('Selected Assets QR Codes', { align: 'center' });
+    doc.fontSize(10).text(`Total Selected: ${assets.length}`, { align: 'center' });
+    doc.fontSize(8).text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+    doc.moveDown(2);
+
+    const tempDir = path.join(__dirname, '..', 'uploads', 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const qrPerRow = 4;
+    const qrPerPage = 16;
+    const pageWidth = 595.28;
+    const pageHeight = 841.89;
+    const margin = 40;
+    const qrSize = 120;
+    
+    const cellWidth = (pageWidth - (2 * margin)) / qrPerRow;
+    const cellHeight = (pageHeight - 150) / qrPerRow;
+
+    for (let i = 0; i < assets.length; i++) {
+      const asset = assets[i];
+
+      if (i > 0 && i % qrPerPage === 0) {
+        doc.addPage();
+      }
+
+      const positionOnPage = i % qrPerPage;
+      const row = Math.floor(positionOnPage / qrPerRow);
+      const col = positionOnPage % qrPerRow;
+      
+      const x = margin + (col * cellWidth) + (cellWidth - qrSize) / 2;
+      const y = 150 + (row * cellHeight);
+
+      try {
+        const dealerCode = asset.dealerId ? asset.dealerId.dealerCode : 'UNKNOWN';
+        const tempBarcode = await generateBarcodeImage(asset.barcodeValue, asset.assetNo, dealerCode);
+        const tempImagePath = tempBarcode.filepath;
+
+        if (fs.existsSync(tempImagePath)) {
+          doc.image(tempImagePath, x, y, {
+            fit: [qrSize, qrSize],
+          });
+          
+          fs.unlinkSync(tempImagePath);
+        }
+      } catch (err) {
+        console.error('PDF barcode generation error:', err);
+      }
+    }
+
+    doc.end();
   } catch (error) {
     next(error);
   }

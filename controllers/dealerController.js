@@ -118,18 +118,23 @@ exports.getDealerById = async (req, res, next) => {
     }
 
     const assets = await Asset.find({ dealerId: dealer._id, isDeleted: false })
-      .select('fixtureNo assetNo brand status barcodeValue barcodeImageUrl installationDate dimension standType location createdAt')
+      .select('fixtureNo assetNo brand status barcodeValue barcodeImagePath installationDate dimension standType location createdAt')
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
 
     const assetCount = assets.length;
+
+    const assetsWithUrls = assets.map(asset => {
+      const assetObj = asset.toObject();
+      return assetObj;
+    });
 
     res.status(200).json({
       success: true,
       data: {
         dealer: dealer.toObject(),
         assetCount,
-        assets,
+        assets: assetsWithUrls,
       },
     });
   } catch (error) {
