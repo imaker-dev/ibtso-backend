@@ -17,12 +17,12 @@ const generateTemporaryPassword = () => {
 
 const generateDealerCode = (dealerName) => {
   const cleanName = dealerName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  const timestamp = Date.now().toString().slice(-4);
-  const randomPart = Math.random().toString(36).substring(2, 5).toUpperCase();
   
   const namePrefix = cleanName.substring(0, 4).padEnd(4, 'X');
   
-  return `DLR-${namePrefix}-${timestamp}-${randomPart}`;
+  const randomPart = Math.random().toString(36).substring(2, 12).toUpperCase();
+  
+  return `${namePrefix}-${randomPart}`;
 };
 
 module.exports = { generateTemporaryPassword, generateDealerCode };

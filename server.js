@@ -14,13 +14,41 @@ const app = express();
 
 connectDB();
 
-app.use(helmet());
-app.use(cors());
+const corsOptions = {
+  origin: function (origin, callback) {
+    callback(null, true);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Type', 'Content-Length', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200,
+  maxAge: 86400
+};
+
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: false
+}));
+
+app.use(cors(corsOptions));
+
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', (req, res, next) => {
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Vary', 'Origin');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 app.get('/api/v1/health', (req, res) => {
   res.status(200).json({
