@@ -40,10 +40,4 @@ brandAssignmentSchema.index({ brandId: 1 });
 brandAssignmentSchema.index({ dealerId: 1 });
 brandAssignmentSchema.index({ isActive: 1 });
 
-// Only return active assignments by default
-brandAssignmentSchema.pre(/^find/, function (next) {
-  this.where({ isActive: true });
-  next();
-});
-
 module.exports = mongoose.model('BrandAssignment', brandAssignmentSchema);

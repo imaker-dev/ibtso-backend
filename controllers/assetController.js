@@ -282,6 +282,7 @@ exports.updateAsset = async (req, res, next) => {
       clientId,
       installationDate,
       status,
+      existingImages,
     } = req.body;
 
     // Parse dimension if it's a string (from FormData)
@@ -342,15 +343,94 @@ exports.updateAsset = async (req, res, next) => {
       }
     }
 
-    // Handle new uploaded images
+    // Handle image management with existingImages field
+    // existingImages: array of image paths to keep from current images
+    // If provided (even as empty array), it determines which images to keep
+    // If not provided, all existing images are kept (append mode)
+    
+    let imagesToKeep = [];
+    let imagesToDelete = [];
+    
+    if (existingImages !== undefined && existingImages !== null && existingImages !== '') {
+      // Parse existingImages if it's a JSON string (from FormData)
+      let parsedExistingImages = existingImages;
+      
+      if (typeof existingImages === 'string') {
+        // Try to parse as JSON
+        try {
+          parsedExistingImages = JSON.parse(existingImages);
+        } catch (e) {
+          // If not valid JSON, treat as single path or empty array
+          parsedExistingImages = [];
+        }
+      }
+      
+      // Ensure it's an array
+      if (!Array.isArray(parsedExistingImages)) {
+        parsedExistingImages = [];
+      }
+      
+      console.log('DEBUG - existingImages provided:', parsedExistingImages);
+      console.log('DEBUG - current asset.images:', asset.images);
+      
+      // Validate that provided paths actually exist in current images
+      if (parsedExistingImages.length > 0) {
+        const invalidPaths = parsedExistingImages.filter(path => 
+          !asset.images.includes(path)
+        );
+        
+        if (invalidPaths.length > 0) {
+          console.log('DEBUG - Invalid paths detected:', invalidPaths);
+          return next(new AppError(
+            `Invalid image paths provided. These paths do not exist in the asset: ${invalidPaths.join(', ')}. ` +
+            `Current images are: ${asset.images.join(', ')}`,
+            400
+          ));
+        }
+      }
+      
+      // Determine which images to keep and which to delete
+      if (asset.images && asset.images.length > 0) {
+        asset.images.forEach(imagePath => {
+          if (parsedExistingImages.includes(imagePath)) {
+            imagesToKeep.push(imagePath);
+          } else {
+            imagesToDelete.push(imagePath);
+          }
+        });
+      }
+      
+      console.log('DEBUG - Images to keep:', imagesToKeep);
+      console.log('DEBUG - Images to delete:', imagesToDelete);
+      
+      // Delete images not in existingImages list
+      imagesToDelete.forEach(imagePath => {
+        const fullPath = path.join(process.cwd(), imagePath);
+        if (fs.existsSync(fullPath)) {
+          try {
+            fs.unlinkSync(fullPath);
+            console.log('DEBUG - Deleted image:', imagePath);
+          } catch (err) {
+            console.error('Error deleting image:', err);
+          }
+        }
+      });
+    } else {
+      // existingImages not provided - keep all existing images (append mode)
+      imagesToKeep = asset.images || [];
+      console.log('DEBUG - No existingImages provided, keeping all:', imagesToKeep);
+    }
+    
+    // Add new uploaded images
+    const newImagePaths = [];
     if (req.files && req.files.length > 0) {
-      const newImagePaths = [];
       req.files.forEach(file => {
         newImagePaths.push(file.path.replace(/\\/g, '/'));
       });
-      // Append new images to existing ones
-      asset.images = [...asset.images, ...newImagePaths];
     }
+    
+    // Combine kept images with new images
+    asset.images = [...imagesToKeep, ...newImagePaths];
 
     if (fixtureNo) asset.fixtureNo = fixtureNo;
     if (assetNo) asset.assetNo = assetNo;

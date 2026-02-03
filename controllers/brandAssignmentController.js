@@ -29,6 +29,7 @@ exports.assignBrandToDealers = async (req, res, next) => {
     const existingAssignments = await BrandAssignment.find({
       brandId,
       dealerId: { $in: dealerIds },
+      isActive: true,
     });
 
     const existingDealerIds = existingAssignments.map(a => a.dealerId.toString());
@@ -46,7 +47,7 @@ exports.assignBrandToDealers = async (req, res, next) => {
     );
 
     // Get all current assignments with populated data
-    const allAssignments = await BrandAssignment.find({ brandId })
+    const allAssignments = await BrandAssignment.find({ brandId, isActive: true })
       .populate('dealerId', 'dealerCode name shopName email')
       .populate('assignedBy', 'name email');
 
@@ -102,7 +103,7 @@ exports.unassignBrandFromDealers = async (req, res, next) => {
     );
 
     // Get remaining active assignments
-    const remainingAssignments = await BrandAssignment.find({ brandId })
+    const remainingAssignments = await BrandAssignment.find({ brandId, isActive: true })
       .populate('dealerId', 'dealerCode name shopName email')
       .populate('assignedBy', 'name email');
 
@@ -137,7 +138,7 @@ exports.getDealersForBrand = async (req, res, next) => {
       return next(new AppError('Brand not found', 404));
     }
 
-    const assignments = await BrandAssignment.find({ brandId })
+    const assignments = await BrandAssignment.find({ brandId, isActive: true })
       .populate('dealerId', 'dealerCode name shopName email phone location')
       .populate('assignedBy', 'name email')
       .sort({ createdAt: -1 });
@@ -168,7 +169,7 @@ exports.getAllBrandAssignments = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, brandId, dealerId } = req.query;
 
-    const query = {};
+    const query = { isActive: true };
     if (brandId) query.brandId = brandId;
     if (dealerId) query.dealerId = dealerId;
 

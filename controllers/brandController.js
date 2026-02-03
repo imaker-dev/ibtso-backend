@@ -78,7 +78,7 @@ exports.getBrandById = async (req, res, next) => {
     }
 
     // Get assigned dealers for this brand
-    const assignments = await BrandAssignment.find({ brandId: req.params.id })
+    const assignments = await BrandAssignment.find({ brandId: req.params.id, isActive: true })
       .populate('dealerId', 'dealerCode name shopName email')
       .populate('assignedBy', 'name email');
 
@@ -165,7 +165,7 @@ exports.getBrandsByDealer = async (req, res, next) => {
     }
 
     // Get brand assignments for this dealer
-    const assignments = await BrandAssignment.find({ dealerId })
+    const assignments = await BrandAssignment.find({ dealerId, isActive: true })
       .populate({
         path: 'brandId',
         populate: {

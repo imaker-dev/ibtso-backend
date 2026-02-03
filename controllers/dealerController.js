@@ -102,7 +102,7 @@ exports.createDealer = async (req, res, next) => {
       );
 
       // Get populated brand data
-      assignedBrands = await BrandAssignment.find({ dealerId: dealer._id })
+      assignedBrands = await BrandAssignment.find({ dealerId: dealer._id, isActive: true })
         .populate('brandId', 'name isActive');
     }
 
@@ -201,8 +201,8 @@ exports.getDealerById = async (req, res, next) => {
       return assetObj;
     });
 
-    // Get assigned brands
-    const brandAssignments = await BrandAssignment.find({ dealerId: dealer._id })
+    // Get assigned brands for response
+    const assignedBrands = await BrandAssignment.find({ dealerId: dealer._id, isActive: true })
       .populate('brandId', 'name isActive')
       .populate('assignedBy', 'name email');
 
@@ -212,12 +212,12 @@ exports.getDealerById = async (req, res, next) => {
         dealer: dealer.toObject(),
         assetCount,
         assets: assetsWithUrls,
-        assignedBrands: brandAssignments.map(a => ({
+        assignedBrands: assignedBrands.map(a => ({
           brand: a.brandId,
           assignedBy: a.assignedBy,
           assignedAt: a.createdAt,
         })),
-        totalAssignedBrands: brandAssignments.length,
+        totalAssignedBrands: assignedBrands.length,
       },
     });
   } catch (error) {
@@ -291,17 +291,28 @@ exports.updateDealer = async (req, res, next) => {
 
         // Create new assignments
         if (brandIds.length > 0) {
+          // Get all existing assignments (active and inactive)
+          const existingAssignments = await BrandAssignment.find({ 
+            brandId: { $in: brandIds },
+            dealerId: dealer._id 
+          });
+          
+          const existingBrandIds = existingAssignments.map(a => a.brandId.toString());
+          
           await Promise.all(
             brandIds.map(async (brandId) => {
-              // Check if assignment already exists (was deactivated)
-              const existing = await BrandAssignment.findOne({ brandId, dealerId: dealer._id });
-              if (existing) {
+              const brandIdStr = brandId.toString();
+              
+              if (existingBrandIds.includes(brandIdStr)) {
                 // Reactivate existing assignment
-                existing.isActive = true;
-                existing.assignedBy = req.user._id;
-                existing.unassignedBy = undefined;
-                existing.unassignedAt = undefined;
-                await existing.save();
+                await BrandAssignment.findOneAndUpdate(
+                  { brandId, dealerId: dealer._id },
+                  {
+                    isActive: true,
+                    assignedBy: req.user._id,
+                    $unset: { unassignedBy: 1, unassignedAt: 1 }
+                  }
+                );
               } else {
                 // Create new assignment
                 await BrandAssignment.create({
@@ -316,7 +327,7 @@ exports.updateDealer = async (req, res, next) => {
       }
 
       // Get current brand assignments
-      assignedBrands = await BrandAssignment.find({ dealerId: dealer._id })
+      assignedBrands = await BrandAssignment.find({ dealerId: dealer._id, isActive: true })
         .populate('brandId', 'name isActive');
     }
 
