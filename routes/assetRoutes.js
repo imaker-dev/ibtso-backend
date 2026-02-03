@@ -15,6 +15,7 @@ const {
   createAssetValidation,
   paginationValidation 
 } = require('../middleware/validator');
+const { uploadAssetImages, handleMulterError } = require('../middleware/upload');
 
 router.use(protect);
 
@@ -25,12 +26,12 @@ router.get('/dealer/:dealerId', paginationValidation, getAssetsByDealer);
 router
   .route('/')
   .get(paginationValidation, getAllAssets)
-  .post(createAssetValidation, createAsset);
+  .post(uploadAssetImages, handleMulterError, createAssetValidation, createAsset);
 
 router
   .route('/:id')
   .get(getAssetById)
-  .put(updateAsset)
+  .put(uploadAssetImages, handleMulterError, updateAsset)
   .delete(restrictTo('ADMIN'), deleteAsset);
 
 router.patch('/:id/status', updateAssetStatus);

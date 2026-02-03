@@ -115,7 +115,7 @@ JWT_EXPIRE=7d
 
 # Default Admin Credentials
 DEFAULT_ADMIN_EMAIL=admin@ibtso.com
-DEFAULT_ADMIN_PASSWORD=Admin@123
+DEFAULT_ADMIN_PASSWORD=ibtso@$2026
 DEFAULT_ADMIN_NAME=IBTSO Admin
 
 # File Storage
@@ -229,7 +229,7 @@ POST /api/v1/auth/login
 ```json
 {
   "email": "admin@ibtso.com",
-  "password": "Admin@123"
+  "password": "ibtso@$2026"
 }
 ```
 
@@ -886,7 +886,7 @@ barcode/
 1. Start the server: `npm run dev`
 2. Default admin is auto-created:
    - Email: `admin@ibtso.com`
-   - Password: `Admin@123`
+   - Password: `ibtso@$2026`
 
 ### Sample Workflow
 
@@ -895,7 +895,7 @@ barcode/
 POST /api/v1/auth/login
 {
   "email": "admin@ibtso.com",
-  "password": "Admin@123"
+  "password": "ibtso@$2026"
 }
 ```
 

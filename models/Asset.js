@@ -16,15 +16,15 @@ const assetSchema = new mongoose.Schema(
     dimension: {
       length: {
         type: Number,
-        required: [true, 'Please provide length'],
+        required: [false, 'Please provide length'],
       },
       height: {
         type: Number,
-        required: [true, 'Please provide height'],
+        required: [false, 'Please provide height'],
       },
       depth: {
         type: Number,
-        required: [true, 'Please provide depth'],
+        required: [false, 'Please provide depth'],
       },
       unit: {
         type: String,
@@ -37,16 +37,25 @@ const assetSchema = new mongoose.Schema(
       required: [true, 'Please provide stand type'],
       trim: true,
     },
-    brand: {
-      type: String,
+    brandId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Brand',
       required: [true, 'Please provide brand'],
-      trim: true,
     },
     dealerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Dealer',
       required: [true, 'Please provide dealer'],
     },
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Client',
+      required: [false, 'Please provide client'],
+    },
+    images: [{
+      type: String,
+      trim: true,
+    }],
     installationDate: {
       type: Date,
       required: [true, 'Please provide installation date'],
@@ -123,8 +132,9 @@ assetSchema.virtual('barcodeImageUrl').get(function() {
 
 assetSchema.index({ barcodeValue: 1 });
 assetSchema.index({ dealerId: 1 });
+assetSchema.index({ clientId: 1 });
+assetSchema.index({ brandId: 1 });
 assetSchema.index({ fixtureNo: 1, dealerId: 1 });
-assetSchema.index({ brand: 1 });
 assetSchema.index({ isDeleted: 1 });
 assetSchema.index({ createdAt: -1 });
 

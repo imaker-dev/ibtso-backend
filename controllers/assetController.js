@@ -1,5 +1,7 @@
 const Asset = require('../models/Asset');
 const Dealer = require('../models/Dealer');
+const Client = require('../models/Client');
+const Brand = require('../models/Brand');
 const User = require('../models/User');
 const { AppError } = require('../middleware/errorHandler');
 const { 
@@ -7,6 +9,14 @@ const {
   generateBarcodeImage,
   checkBarcodeUniqueness 
 } = require('../services/barcodeService');
+const fs = require('fs');
+const path = require('path');
+
+// Helper function to convert image paths to full URLs
+const getImageUrls = (images) => {
+  const appUrl = process.env.APP_URL || 'http://localhost:5000';
+  return images.map(img => `${appUrl}/${img.replace(/\\/g, '/')}`);
+};
 
 exports.createAsset = async (req, res, next) => {
   try {
@@ -15,12 +25,24 @@ exports.createAsset = async (req, res, next) => {
       assetNo,
       dimension,
       standType,
-      brand,
+      brandId,
       dealerId,
+      clientId,
       installationDate,
       status,
     } = req.body;
 
+    // Parse dimension if it's a string (from FormData)
+    let parsedDimension = dimension;
+    if (typeof dimension === 'string') {
+      try {
+        parsedDimension = JSON.parse(dimension);
+      } catch (e) {
+        return next(new AppError('Invalid dimension format', 400));
+      }
+    }
+
+    // Verify dealer exists
     const dealer = await Dealer.findById(dealerId);
     if (!dealer) {
       return next(new AppError('Dealer not found', 404));
@@ -30,8 +52,18 @@ exports.createAsset = async (req, res, next) => {
       return next(new AppError('Cannot create asset for inactive dealer', 400));
     }
 
-    if (req.user.role === 'DEALER' && req.user.dealerRef.toString() !== dealerId) {
-      return next(new AppError('You can only create assets for your own dealership', 403));
+    // Verify brand exists
+    const brand = await Brand.findById(brandId);
+    if (!brand) {
+      return next(new AppError('Brand not found', 404));
+    }
+
+    // Verify client exists if provided
+    if (clientId) {
+      const client = await Client.findById(clientId);
+      if (!client) {
+        return next(new AppError('Client not found', 404));
+      }
     }
 
     const existingAsset = await Asset.findOne({ assetNo });
@@ -73,12 +105,20 @@ exports.createAsset = async (req, res, next) => {
       googleMapLink: dealer.location.googleMapLink,
     };
 
-    const asset = await Asset.create({
+    // Handle uploaded images
+    const imagePaths = [];
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        imagePaths.push(file.path.replace(/\\/g, '/'));
+      });
+    }
+
+    const assetData = {
       fixtureNo,
       assetNo,
-      dimension,
+      dimension: parsedDimension,
       standType,
-      brand,
+      brandId,
       dealerId,
       installationDate: installDate,
       location: assetLocation,
@@ -86,16 +126,28 @@ exports.createAsset = async (req, res, next) => {
       barcodeImagePath: barcodeImage.relativePath,
       status: status || 'ACTIVE',
       createdBy: req.user._id || req.user.id,
-    });
+      images: imagePaths,
+    };
+
+    if (clientId) {
+      assetData.clientId = clientId;
+    }
+
+    const asset = await Asset.create(assetData);
 
     const populatedAsset = await Asset.findById(asset._id)
-      .populate('dealerId', 'dealerCode name shopName')
+      .populate('dealerId', 'dealerCode name shopName email phone location')
+      .populate('brandId', 'name isActive')
+      .populate('clientId', 'name email phone company')
       .populate('createdBy', 'name email');
+
+    const responseData = populatedAsset.toObject();
+    responseData.imageUrls = getImageUrls(responseData.images || []);
 
     res.status(201).json({
       success: true,
       message: 'Asset created successfully',
-      data: populatedAsset,
+      data: responseData,
     });
   } catch (error) {
     next(error);
@@ -129,13 +181,15 @@ exports.getAllAssets = async (req, res, next) => {
       query.$or = [
         { fixtureNo: { $regex: search, $options: 'i' } },
         { assetNo: { $regex: search, $options: 'i' } },
-        { brand: { $regex: search, $options: 'i' } },
         { barcodeValue: { $regex: search, $options: 'i' } },
       ];
     }
 
     if (brand) {
-      query.brand = { $regex: brand, $options: 'i' };
+      // Brand search by brandId if valid ObjectId, otherwise skip
+      if (brand.match(/^[0-9a-fA-F]{24}$/)) {
+        query.brandId = brand;
+      }
     }
 
     if (status) {
@@ -150,12 +204,20 @@ exports.getAllAssets = async (req, res, next) => {
 
     const total = await Asset.countDocuments(query);
     const assets = await Asset.find(query)
-      .populate('dealerId', 'dealerCode name shopName email')
+      .populate('dealerId', 'dealerCode name shopName email phone location')
+      .populate('brandId', 'name isActive')
+      .populate('clientId', 'name email phone company')
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
+
+    const assetsWithUrls = assets.map(asset => {
+      const assetData = asset.toObject();
+      assetData.imageUrls = getImageUrls(assetData.images || []);
+      return assetData;
+    });
 
     res.status(200).json({
       success: true,
@@ -163,7 +225,7 @@ exports.getAllAssets = async (req, res, next) => {
       total,
       totalPages: Math.ceil(total / limit),
       currentPage: parseInt(page),
-      data: assets,
+      data: assetsWithUrls,
     });
   } catch (error) {
     next(error);
@@ -173,7 +235,9 @@ exports.getAllAssets = async (req, res, next) => {
 exports.getAssetById = async (req, res, next) => {
   try {
     const asset = await Asset.findById(req.params.id)
-      .populate('dealerId', 'dealerCode name shopName email phone location')
+      .populate('dealerId', 'dealerCode name shopName email phone location vatRegistration')
+      .populate('brandId', 'name isActive')
+      .populate('clientId', 'name email phone company address vatin placeOfSupply country')
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email');
 
@@ -185,9 +249,12 @@ exports.getAssetById = async (req, res, next) => {
       return next(new AppError('You do not have permission to access this asset', 403));
     }
 
+    const assetData = asset.toObject();
+    assetData.imageUrls = getImageUrls(assetData.images || []);
+
     res.status(200).json({
       success: true,
-      data: asset,
+      data: assetData,
     });
   } catch (error) {
     next(error);
@@ -211,10 +278,21 @@ exports.updateAsset = async (req, res, next) => {
       assetNo,
       dimension,
       standType,
-      brand,
+      brandId,
+      clientId,
       installationDate,
       status,
     } = req.body;
+
+    // Parse dimension if it's a string (from FormData)
+    let parsedDimension = dimension;
+    if (dimension && typeof dimension === 'string') {
+      try {
+        parsedDimension = JSON.parse(dimension);
+      } catch (e) {
+        return next(new AppError('Invalid dimension format', 400));
+      }
+    }
 
     if (assetNo && assetNo !== asset.assetNo) {
       const existingAsset = await Asset.findOne({ assetNo, _id: { $ne: asset._id } });
@@ -242,11 +320,42 @@ exports.updateAsset = async (req, res, next) => {
       asset.installationDate = installDate;
     }
 
+    // Verify brand if provided
+    if (brandId) {
+      const brand = await Brand.findById(brandId);
+      if (!brand) {
+        return next(new AppError('Brand not found', 404));
+      }
+      asset.brandId = brandId;
+    }
+
+    // Verify client if provided
+    if (clientId !== undefined) {
+      if (clientId) {
+        const client = await Client.findById(clientId);
+        if (!client) {
+          return next(new AppError('Client not found', 404));
+        }
+        asset.clientId = clientId;
+      } else {
+        asset.clientId = null;
+      }
+    }
+
+    // Handle new uploaded images
+    if (req.files && req.files.length > 0) {
+      const newImagePaths = [];
+      req.files.forEach(file => {
+        newImagePaths.push(file.path.replace(/\\/g, '/'));
+      });
+      // Append new images to existing ones
+      asset.images = [...asset.images, ...newImagePaths];
+    }
+
     if (fixtureNo) asset.fixtureNo = fixtureNo;
     if (assetNo) asset.assetNo = assetNo;
-    if (dimension) asset.dimension = dimension;
+    if (parsedDimension) asset.dimension = parsedDimension;
     if (standType) asset.standType = standType;
-    if (brand) asset.brand = brand;
     if (status) asset.status = status;
     // Location is always synced from dealer, not updated directly
     
@@ -254,14 +363,19 @@ exports.updateAsset = async (req, res, next) => {
     await asset.save();
 
     const updatedAsset = await Asset.findById(asset._id)
-      .populate('dealerId', 'dealerCode name shopName')
+      .populate('dealerId', 'dealerCode name shopName email phone location')
+      .populate('brandId', 'name isActive')
+      .populate('clientId', 'name email phone company')
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email');
+
+    const assetData = updatedAsset.toObject();
+    assetData.imageUrls = getImageUrls(assetData.images || []);
 
     res.status(200).json({
       success: true,
       message: 'Asset updated successfully',
-      data: updatedAsset,
+      data: assetData,
     });
   } catch (error) {
     next(error);

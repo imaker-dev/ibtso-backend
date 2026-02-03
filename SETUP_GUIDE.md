@@ -23,7 +23,7 @@ MONGO_URI=mongodb://localhost:27017/ibtso_asset_tracking
 JWT_SECRET=change_this_to_a_random_secret_string
 JWT_EXPIRE=7d
 DEFAULT_ADMIN_EMAIL=admin@ibtso.com
-DEFAULT_ADMIN_PASSWORD=Admin@123
+DEFAULT_ADMIN_PASSWORD=ibtso@$2026
 DEFAULT_ADMIN_NAME=IBTSO Admin
 ```
 
@@ -86,7 +86,7 @@ The system automatically creates a default admin account on first run:
 
 **Credentials:**
 - Email: `admin@ibtso.com`
-- Password: `Admin@123`
+- Password: `ibtso@$2026`
 
 **First Login:**
 ```bash
@@ -95,7 +95,7 @@ Content-Type: application/json
 
 {
   "email": "admin@ibtso.com",
-  "password": "Admin@123"
+  "password": "ibtso@$2026"
 }
 ```
 
@@ -125,7 +125,7 @@ Content-Type: application/json
 
 {
   "email": "admin@ibtso.com",
-  "password": "Admin@123"
+  "password": "ibtso@$2026"
 }
 ```
 
@@ -228,7 +228,7 @@ Authorization: Bearer <token>
 ```bash
 curl -X POST http://localhost:5000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@ibtso.com","password":"Admin@123"}'
+  -d '{"email":"admin@ibtso.com","password":"ibtso@$2026"}'
 ```
 
 **Create Dealer:**
@@ -265,7 +265,7 @@ Content-Type: application/json
 
 {
   "email": "admin@ibtso.com",
-  "password": "Admin@123"
+  "password": "ibtso@$2026"
 }
 
 ### Get Dashboard

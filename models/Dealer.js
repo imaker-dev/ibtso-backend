@@ -11,12 +11,12 @@ const dealerSchema = new mongoose.Schema(
     },
     name: {
       type: String,
-      required: [true, 'Please provide dealer name'],
+      required: [false, 'Please provide dealer name'],
       trim: true,
     },
     phone: {
       type: String,
-      required: [true, 'Please provide phone number'],
+      required: [false, 'Please provide phone number'],
       trim: true,
       validate: {
         validator: function(v) {
@@ -27,8 +27,9 @@ const dealerSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      required: [true, 'Please provide email'],
+      required: [false, 'Please provide email'],
       unique: true,
+      sparse: true,
       lowercase: true,
       trim: true,
       match: [
@@ -38,20 +39,21 @@ const dealerSchema = new mongoose.Schema(
     },
     shopName: {
       type: String,
-      required: [true, 'Please provide shop name'],
+      required: [false, 'Please provide shop name'],
       trim: true,
     },
     vatRegistration: {
       type: String,
-      required: [true, 'Please provide VAT registration number'],
+      required: [false, 'Please provide VAT registration number'],
       trim: true,
       unique: true,
+      sparse: true,
     },
     location: {
       address: {
         type: String,
-        required: [true, 'Please provide address'],
-        trim: true,
+        required: [false, 'Please provide address'],
+        trim: false,
       },
       latitude: {
         type: Number,
@@ -63,7 +65,7 @@ const dealerSchema = new mongoose.Schema(
       },
       googleMapLink: {
         type: String,
-        trim: true,
+        trim: false,
       },
     },
     userId: {

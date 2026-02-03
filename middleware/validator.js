@@ -27,56 +27,69 @@ const loginValidation = [
 ];
 
 const createDealerValidation = [
-  body('name').trim().notEmpty().withMessage('Dealer name is required'),
-  body('phone').trim().notEmpty().withMessage('Phone number is required'),
+  body('name').trim().optional(),
+  body('phone').trim().optional(),
   body('email')
     .trim()
-    .notEmpty()
-    .withMessage('Email is required')
     .isEmail()
-    .withMessage('Please provide a valid email'),
-  body('shopName').trim().notEmpty().withMessage('Shop name is required'),
+    .optional({ checkFalsy: true }),
+  body('shopName').trim().optional(),
   body('vatRegistration')
     .trim()
-    .notEmpty()
-    .withMessage('VAT registration is required'),
+    .optional(),
   body('location.address')
     .trim()
-    .notEmpty()
-    .withMessage('Address is required'),
+    .optional(),
+  body('location.latitude')
+    .optional()
+    .isNumeric()
+    .withMessage('Latitude must be a number'),
+  body('location.longitude')
+    .optional()
+    .isNumeric()
+    .withMessage('Longitude must be a number'),
+  body('brandIds')
+    .optional()
+    .isArray()
+    .withMessage('brandIds must be an array'),
+  body('brandIds.*')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid brand ID in array'),
   validate,
 ];
 
 const updateDealerValidation = [
   param('id').isMongoId().withMessage('Invalid dealer ID'),
+  body('brandIds')
+    .optional()
+    .isArray()
+    .withMessage('brandIds must be an array'),
+  body('brandIds.*')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid brand ID in array'),
   validate,
 ];
 
 const createAssetValidation = [
   body('fixtureNo').trim().notEmpty().withMessage('Fixture number is required'),
   body('assetNo').trim().notEmpty().withMessage('Asset number is required'),
-  body('dimension.length')
-    .notEmpty()
-    .withMessage('Length is required')
-    .isNumeric()
-    .withMessage('Length must be a number'),
-  body('dimension.height')
-    .notEmpty()
-    .withMessage('Height is required')
-    .isNumeric()
-    .withMessage('Height must be a number'),
-  body('dimension.depth')
-    .notEmpty()
-    .withMessage('Depth is required')
-    .isNumeric()
-    .withMessage('Depth must be a number'),
   body('standType').trim().notEmpty().withMessage('Stand type is required'),
-  body('brand').trim().notEmpty().withMessage('Brand is required'),
+  body('brandId')
+    .notEmpty()
+    .withMessage('Brand ID is required')
+    .isMongoId()
+    .withMessage('Invalid brand ID'),
   body('dealerId')
     .notEmpty()
     .withMessage('Dealer ID is required')
     .isMongoId()
     .withMessage('Invalid dealer ID'),
+  body('clientId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid client ID'),
   body('installationDate')
     .notEmpty()
     .withMessage('Installation date is required')
@@ -97,6 +110,92 @@ const paginationValidation = [
   validate,
 ];
 
+const createBrandValidation = [
+  body('name').trim().optional(),
+  validate,
+];
+
+const assignBrandValidation = [
+  param('brandId').isMongoId().withMessage('Invalid brand ID'),
+  body('dealerIds')
+    .isArray()
+    .withMessage('dealerIds must be an array')
+    .notEmpty()
+    .withMessage('dealerIds array cannot be empty'),
+  body('dealerIds.*')
+    .isMongoId()
+    .withMessage('Invalid dealer ID in array'),
+  validate,
+];
+
+const updateBrandValidation = [
+  param('id').isMongoId().withMessage('Invalid brand ID'),
+  body('name').trim().optional(),
+  body('isActive').optional().isBoolean().withMessage('isActive must be a boolean'),
+  validate,
+];
+
+const createClientValidation = [
+  body('name').trim().notEmpty().withMessage('Client name is required'),
+  body('email')
+    .trim()
+    .isEmail()
+    .optional({ checkFalsy: true }),
+  body('phone').trim().optional(),
+  body('company').trim().optional(),
+  body('address').trim().optional(),
+  body('vatin').trim().optional(),
+  body('placeOfSupply').trim().optional(),
+  body('country').trim().optional(),
+  body('dealerIds')
+    .optional()
+    .isArray()
+    .withMessage('dealerIds must be an array'),
+  body('dealerIds.*')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid dealer ID in array'),
+  validate,
+];
+
+const updateClientValidation = [
+  param('id').isMongoId().withMessage('Invalid client ID'),
+  body('name').trim().optional(),
+  body('email')
+    .trim()
+    .isEmail()
+    .optional({ checkFalsy: true }),
+  body('phone').trim().optional(),
+  body('company').trim().optional(),
+  body('address').trim().optional(),
+  body('vatin').trim().optional(),
+  body('placeOfSupply').trim().optional(),
+  body('country').trim().optional(),
+  body('dealerIds')
+    .optional()
+    .isArray()
+    .withMessage('dealerIds must be an array'),
+  body('dealerIds.*')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid dealer ID in array'),
+  body('isActive').optional().isBoolean().withMessage('isActive must be a boolean'),
+  validate,
+];
+
+const assignDealersValidation = [
+  param('clientId').isMongoId().withMessage('Invalid client ID'),
+  body('dealerIds')
+    .isArray()
+    .withMessage('dealerIds must be an array')
+    .notEmpty()
+    .withMessage('dealerIds array cannot be empty'),
+  body('dealerIds.*')
+    .isMongoId()
+    .withMessage('Invalid dealer ID in array'),
+  validate,
+];
+
 module.exports = {
   validate,
   loginValidation,
@@ -104,4 +203,10 @@ module.exports = {
   updateDealerValidation,
   createAssetValidation,
   paginationValidation,
+  createBrandValidation,
+  updateBrandValidation,
+  assignBrandValidation,
+  createClientValidation,
+  updateClientValidation,
+  assignDealersValidation,
 };

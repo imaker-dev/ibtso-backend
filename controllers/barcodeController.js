@@ -1,5 +1,7 @@
 const Asset = require('../models/Asset');
 const Dealer = require('../models/Dealer');
+const Brand = require('../models/Brand');
+const Client = require('../models/Client');
 const { AppError } = require('../middleware/errorHandler');
 const { regenerateBarcode, generateBarcodeValue, generateBarcodeImage } = require('../services/barcodeService');
 const PDFDocument = require('pdfkit');
@@ -18,6 +20,8 @@ exports.scanBarcodePublic = async (req, res, next) => {
 
     const asset = await Asset.findOne({ barcodeValue: barcodeValue.toUpperCase() })
       .populate('dealerId', 'dealerCode name shopName email phone location vatRegistration')
+      .populate('brandId', 'name isActive')
+      .populate('clientId', 'name email phone company address vatin placeOfSupply country')
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email');
 
@@ -147,7 +151,7 @@ exports.scanBarcodePublic = async (req, res, next) => {
                
                 <div class="info-item" style="grid-column: 1 / -1;">
                   <div class="info-label">Brand</div>
-                  <div class="info-value">${asset.brand}</div>
+                  <div class="info-value">${asset.brandId ? asset.brandId.name : 'N/A'}</div>
                 </div>
                 <div class="info-item" style="grid-column: 1 / -1;">
                   <div class="info-label">Installation Date</div>
@@ -166,29 +170,7 @@ exports.scanBarcodePublic = async (req, res, next) => {
               </div>
             </div>
 
-            <div class="section">
-              <div class="section-title">📍Asset Location Coordinates</div>
-              <div class="info-grid">
-                <div class="info-item" style="grid-column: 1 / -1;">
-                  <div class="info-label">Address</div>
-                  <div class="info-value">${asset.location.address}</div>
-                </div>
-                <div class="info-item">
-                  <div class="info-label">Latitude</div>
-                  <div class="info-value">${asset.location.latitude == undefined ? 'N/A' : asset.location.latitude}</div>
-                </div>
-                <div class="info-item">
-                  <div class="info-label">Longitude</div>
-                  <div class="info-value">${asset.location.longitude == undefined ? 'N/A' : asset.location.longitude}</div>
-                </div>
-                ${asset.location.googleMapLink ? `
-                <div class="info-item" style="grid-column: 1 / -1;">
-                  <div class="info-label">Google Maps</div>
-                  <div class="info-value"><a href="${asset.location.googleMapLink}" target="_blank" style="color: #667eea;">📍 View on Google Maps</a></div>
-                </div>
-                ` : ''}
-              </div>
-            </div>
+           
 
             <div class="section">
               <div class="section-title">🏪 Dealer Details</div>
@@ -221,6 +203,73 @@ exports.scanBarcodePublic = async (req, res, next) => {
                 ` : ''}
               </div>
             </div>
+
+            ${asset.clientId ? `
+            <div class="section">
+              <div class="section-title">👤 Client Details</div>
+              <div class="info-grid">
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Name</div>
+                  <div class="info-value">${asset.clientId.name}</div>
+                </div>
+                ${asset.clientId.company ? `
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Company</div>
+                  <div class="info-value">${asset.clientId.company}</div>
+                </div>
+                ` : ''}
+                ${asset.clientId.email ? `
+                <div class="info-item">
+                  <div class="info-label">Email</div>
+                  <div class="info-value">${asset.clientId.email}</div>
+                </div>
+                ` : ''}
+                ${asset.clientId.phone ? `
+                <div class="info-item">
+                  <div class="info-label">Phone</div>
+                  <div class="info-value">${asset.clientId.phone}</div>
+                </div>
+                ` : ''}
+                ${asset.clientId.address ? `
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="info-label">Address</div>
+                  <div class="info-value">${asset.clientId.address}</div>
+                </div>
+                ` : ''}
+                ${asset.clientId.vatin ? `
+                <div class="info-item">
+                  <div class="info-label">VATIN</div>
+                  <div class="info-value">${asset.clientId.vatin}</div>
+                </div>
+                ` : ''}
+                ${asset.clientId.placeOfSupply ? `
+                <div class="info-item">
+                  <div class="info-label">Place of Supply</div>
+                  <div class="info-value">${asset.clientId.placeOfSupply}</div>
+                </div>
+                ` : ''}
+                ${asset.clientId.country ? `
+                <div class="info-item">
+                  <div class="info-label">Country</div>
+                  <div class="info-value">${asset.clientId.country}</div>
+                </div>
+                ` : ''}
+              </div>
+            </div>
+            ` : ''}
+
+            ${asset.images && asset.images.length > 0 ? `
+            <div class="section">
+              <div class="section-title">📷 Asset Images</div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                ${asset.images.map(img => `
+                  <div style="border: 2px solid #667eea; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <img src="/${img}" alt="Asset Image" style="width: 100%; height: 200px; object-fit: cover; display: block;" onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'padding: 20px; text-align: center; color: #999;\\'>Image not available</div>'">
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+            ` : ''}
 
             <div class="section">
               <div class="section-title">⏱️ Timeline Information</div>
@@ -298,6 +347,8 @@ exports.scanBarcode = async (req, res, next) => {
 
     const asset = await Asset.findOne({ barcodeValue: barcodeValue.toUpperCase() })
       .populate('dealerId', 'dealerCode name shopName email phone location vatRegistration')
+      .populate('brandId', 'name isActive')
+      .populate('clientId', 'name email phone company address vatin placeOfSupply country')
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email');
 
