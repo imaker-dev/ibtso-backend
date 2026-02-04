@@ -586,16 +586,25 @@ exports.downloadAllBarcodesAsPDF = async (req, res, next) => {
       return next(new AppError('Only admins can access this feature', 403));
     }
 
-    const { dealerId } = req.params;
+    const { clientId } = req.params;
     const { startDate, endDate } = req.query;
 
-    const dealer = await Dealer.findById(dealerId);
-    if (!dealer) {
-      return next(new AppError('Dealer not found', 404));
+    const client = await Client.findById(clientId);
+    if (!client) {
+      return next(new AppError('Client not found', 404));
     }
 
-    // Build query with optional date range
-    const query = { dealerId, isDeleted: false };
+    const dealerIds = client.dealerIds;
+    
+    // Fetch all dealers for this client
+    const dealers = await Dealer.find({ _id: { $in: dealerIds } });
+    
+    if (dealers.length === 0) {
+      return next(new AppError('No dealers found for this client', 404));
+    }
+
+    // Build query with optional date range for all dealers under this client
+    const query = { dealerId: { $in: dealerIds }, isDeleted: false };
     
     if (startDate || endDate) {
       query.createdAt = {};
@@ -610,15 +619,15 @@ exports.downloadAllBarcodesAsPDF = async (req, res, next) => {
     }
 
     const assets = await Asset.find(query)
-      .select('fixtureNo assetNo barcodeValue barcodeImagePath brand status createdAt')
+      .select('fixtureNo assetNo barcodeValue barcodeImagePath brand status createdAt dealerId')
       .sort({ createdAt: -1 });
 
     if (assets.length === 0) {
-      return next(new AppError('No assets found for this dealer', 404));
+      return next(new AppError('No assets found for this client', 404));
     }
 
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
-    const filename = `barcodes_${dealer.dealerCode}_${Date.now()}.pdf`;
+    const filename = `barcodes_${client.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -626,9 +635,9 @@ exports.downloadAllBarcodesAsPDF = async (req, res, next) => {
     doc.pipe(res);
 
     doc.fontSize(20).text('IBTSO Asset Tracking', { align: 'center' });
-    doc.fontSize(16).text(`Barcode Collection - ${dealer.name}`, { align: 'center' });
-    doc.fontSize(12).text(`Dealer Code: ${dealer.dealerCode}`, { align: 'center' });
-    doc.fontSize(10).text(`Shop: ${dealer.shopName}`, { align: 'center' });
+    doc.fontSize(16).text(`Barcode Collection - ${client.name}`, { align: 'center' });
+    doc.fontSize(12).text(`Company: ${client.company}`, { align: 'center' });
+    doc.fontSize(10).text(`Dealers: ${dealers.map(d => d.name).join(', ')}`, { align: 'center' });
     if (startDate || endDate) {
       const dateRangeText = `Date Range: ${startDate ? new Date(startDate).toLocaleDateString() : 'All'} to ${endDate ? new Date(endDate).toLocaleDateString() : 'All'}`;
       doc.fontSize(9).text(dateRangeText, { align: 'center' });
@@ -671,7 +680,11 @@ exports.downloadAllBarcodesAsPDF = async (req, res, next) => {
       const y = 150 + (row * cellHeight);
 
       try {
-        const tempBarcode = await generateBarcodeImage(asset.barcodeValue, asset.assetNo, dealer.dealerCode);
+        // Get the dealer for this asset to use dealer code
+        const assetDealer = dealers.find(d => d._id.toString() === asset.dealerId.toString());
+        const dealerCode = assetDealer ? assetDealer.dealerCode : 'UNKNOWN';
+        
+        const tempBarcode = await generateBarcodeImage(asset.barcodeValue, asset.assetNo, dealerCode);
         const tempImagePath = tempBarcode.filepath;
 
         if (fs.existsSync(tempImagePath)) {

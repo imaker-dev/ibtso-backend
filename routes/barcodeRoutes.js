@@ -26,6 +26,7 @@ router.post('/regenerate/:assetId', restrictTo('ADMIN'), regenerateBarcodeForAss
 // router.get('/check/:barcodeValue', checkBarcodeAvailability); // Function not implemented
 
 router.get('/dealer/:dealerId/download-pdf', restrictTo('ADMIN'), downloadAllBarcodesAsPDF);
+router.get('/client/:clientId/download-pdf', restrictTo('ADMIN'), downloadAllBarcodesAsPDF);
 
 router.get('/dealer/:dealerId/download-zip', restrictTo('ADMIN'), downloadAllBarcodesAsZIP);
 
