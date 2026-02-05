@@ -99,6 +99,21 @@ exports.checkOwnership = (Model, resourceParam = 'id') => {
         }
       }
 
+      if (req.user.role === 'CLIENT') {
+        const userClientRef = req.user.clientRef;
+        if (resource.clientId && resource.clientId.toString() !== userClientRef.toString()) {
+          return next(
+            new AppError('You do not have permission to access this resource', 403)
+          );
+        }
+        
+        if (resource._id && resource._id.toString() !== userClientRef.toString()) {
+          return next(
+            new AppError('You do not have permission to access this resource', 403)
+          );
+        }
+      }
+
       next();
     } catch (error) {
       next(error);

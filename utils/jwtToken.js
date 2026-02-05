@@ -1,13 +1,13 @@
 const jwt = require('jsonwebtoken');
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+const generateToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE,
   });
 };
 
 const sendTokenResponse = (user, statusCode, res, message = 'Success') => {
-  const token = generateToken(user._id);
+  const token = generateToken(user._id, user.role);
 
   const userResponse = {
     _id: user._id,
@@ -15,6 +15,7 @@ const sendTokenResponse = (user, statusCode, res, message = 'Success') => {
     email: user.email,
     role: user.role,
     dealerRef: user.dealerRef,
+    clientRef: user.clientRef,
     isTemporaryPassword: user.isTemporaryPassword,
   };
 

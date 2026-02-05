@@ -9,11 +9,17 @@ const {
   assignDealersToClient,
   removeDealersFromClient,
   getClientsByDealer,
+  getClientProfile,
 } = require('../controllers/clientController');
 const { protect, restrictTo } = require('../middleware/auth');
 const { createClientValidation, updateClientValidation, assignDealersValidation } = require('../middleware/validator');
 
 router.use(protect);
+
+// Client profile route - CLIENT role can access their own profile
+router.get('/profile', getClientProfile);
+
+// Admin routes
 router.use(restrictTo('ADMIN'));
 
 // Client CRUD - Admin only

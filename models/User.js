@@ -27,12 +27,17 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['ADMIN', 'DEALER'],
+      enum: ['ADMIN', 'DEALER', 'CLIENT'],
       default: 'DEALER',
     },
     dealerRef: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Dealer',
+      default: null,
+    },
+    clientRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Client',
       default: null,
     },
     isActive: {

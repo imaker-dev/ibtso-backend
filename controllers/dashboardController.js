@@ -1,5 +1,6 @@
 const Asset = require('../models/Asset');
 const Dealer = require('../models/Dealer');
+const Client = require('../models/Client');
 const User = require('../models/User');
 const { AppError } = require('../middleware/errorHandler');
 
@@ -246,6 +247,91 @@ exports.getSystemStats = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: dbStats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Client Dashboard Stats
+exports.getClientDashboard = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'CLIENT') {
+      return next(new AppError('Only clients can access this dashboard', 403));
+    }
+
+    const clientId = req.user.clientRef;
+    const client = await Client.findById(clientId);
+    if (!client) {
+      return next(new AppError('Client not found', 404));
+    }
+
+    // Get all dealer IDs for this client
+    const dealerIds = client.dealerIds;
+
+    // Asset statistics
+    const totalAssets = await Asset.countDocuments({ 
+      dealerId: { $in: dealerIds }, 
+      isDeleted: false 
+    });
+    const activeAssets = await Asset.countDocuments({ 
+      dealerId: { $in: dealerIds }, 
+      isDeleted: false, 
+      status: 'ACTIVE' 
+    });
+    const maintenanceAssets = await Asset.countDocuments({ 
+      dealerId: { $in: dealerIds }, 
+      isDeleted: false, 
+      status: 'MAINTENANCE' 
+    });
+    const inactiveAssets = await Asset.countDocuments({ 
+      dealerId: { $in: dealerIds }, 
+      isDeleted: false, 
+      status: 'INACTIVE' 
+    });
+
+    // Calculate profile completion percentage
+    let profileFields = ['name', 'email', 'phone', 'company', 'address'];
+    let completedFields = 0;
+    profileFields.forEach(field => {
+      if (client[field] && client[field].toString().trim() !== '') {
+        completedFields++;
+      }
+    });
+    const completionPercentage = Math.round((completedFields / profileFields.length) * 100);
+
+    // Recent activity (recently updated assets)
+    const recentActivity = await Asset.find({ 
+      dealerId: { $in: dealerIds }, 
+      isDeleted: false 
+    })
+      .select('fixtureNo assetNo status updatedAt')
+      .sort({ updatedAt: -1 })
+      .limit(10)
+      .lean();
+
+    const recentActivityFormatted = recentActivity.map(asset => ({
+      _id: asset._id,
+      name: asset.assetNo || asset.fixtureNo,
+      status: asset.status.toLowerCase(),
+      updatedAt: asset.updatedAt
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        assets: {
+          total: totalAssets,
+          active: activeAssets,
+          maintenance: maintenanceAssets,
+          inactive: inactiveAssets
+        },
+        profile: {
+          completionPercentage,
+          lastLogin: req.user.lastLogin
+        },
+        recentActivity: recentActivityFormatted
+      }
     });
   } catch (error) {
     next(error);

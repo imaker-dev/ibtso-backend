@@ -1,6 +1,13 @@
 const Client = require('../models/Client');
 const Dealer = require('../models/Dealer');
+const User = require('../models/User');
 const { AppError } = require('../middleware/errorHandler');
+const crypto = require('crypto');
+
+// Helper function to generate random password
+const generateRandomPassword = () => {
+  return crypto.randomBytes(8).toString('hex').toUpperCase();
+};
 
 // Create client (Admin only)
 exports.createClient = async (req, res, next) => {
@@ -12,6 +19,12 @@ exports.createClient = async (req, res, next) => {
       const existingClient = await Client.findOne({ email }).lean();
       if (existingClient) {
         return next(new AppError('Client with this email already exists', 400));
+      }
+      
+      // Check if user with this email already exists
+      const existingUser = await User.findOne({ email }).lean();
+      if (existingUser) {
+        return next(new AppError('User with this email already exists', 400));
       }
     }
 
@@ -39,14 +52,47 @@ exports.createClient = async (req, res, next) => {
 
     const client = await Client.create(clientData);
 
+    // Create user account if email is provided
+    let userData = null;
+    if (email) {
+      const tempPassword = "password" + clientData.phone;
+      
+      userData = {
+        name: name,
+        email: email,
+        password: tempPassword,
+        role: 'CLIENT',
+        clientRef: client._id,
+        isTemporaryPassword: true,
+      };
+
+      const user = await User.create(userData);
+      
+      // Add user credentials to response for admin to share with client
+      userData = {
+        userId: user._id,
+        email: user.email,
+        temporaryPassword: tempPassword,
+        isTemporaryPassword: true,
+      };
+    }
+
     const populatedClient = await Client.findById(client._id)
       .populate('dealerIds', 'dealerCode name shopName email')
       .populate('createdBy', 'name email');
 
+    const responseData = {
+      client: populatedClient,
+    };
+
+    if (userData) {
+      responseData.userCredentials = userData;
+    }
+
     res.status(201).json({
       success: true,
-      message: 'Client created successfully',
-      data: populatedClient,
+      message: 'Client created successfully' + (userData ? ' and user account generated' : ''),
+      data: responseData,
     });
   } catch (error) {
     next(error);
@@ -298,6 +344,41 @@ exports.getClientsByDealer = async (req, res, next) => {
         },
         totalClients: clients.length,
         clients,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get client profile (CLIENT role only)
+exports.getClientProfile = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'CLIENT') {
+      return next(new AppError('Only clients can access their profile', 403));
+    }
+
+    const client = await Client.findById(req.user.clientRef)
+      .populate('dealerIds', 'dealerCode name shopName email phone')
+      .populate('createdBy', 'name email');
+
+    if (!client) {
+      return next(new AppError('Client profile not found', 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Client profile retrieved successfully',
+      data: {
+        client: client,
+        user: {
+          userId: req.user._id,
+          name: req.user.name,
+          email: req.user.email,
+          role: req.user.role,
+          isTemporaryPassword: req.user.isTemporaryPassword,
+          lastLogin: req.user.lastLogin,
+        },
       },
     });
   } catch (error) {

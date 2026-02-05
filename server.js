@@ -64,6 +64,8 @@ app.use('/api/v1/assets', require('./routes/assetRoutes'));
 app.use('/api/v1/barcodes', require('./routes/barcodeRoutes'));
 app.use('/api/v1/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/v1/brands', require('./routes/brandRoutes'));
+app.use('/api/v1/clients/me', require('./routes/clientProfileRoutes'));
+app.use('/api/v1/assets/client', require('./routes/clientAssetRoutes'));
 app.use('/api/v1/clients', require('./routes/clientRoutes'));
 
 app.use(errorHandler);
