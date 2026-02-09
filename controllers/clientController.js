@@ -12,7 +12,7 @@ const generateRandomPassword = () => {
 // Create client (Admin only)
 exports.createClient = async (req, res, next) => {
   try {
-    const { name, email, phone, company, address, vatin, placeOfSupply, country, dealerIds } = req.body;
+    const { name, email, phone, company, address, vatin, placeOfSupply, country, dealerIds, password, confirmPassword } = req.body;
 
     // Check for existing email if provided
     if (email) {
@@ -25,6 +25,21 @@ exports.createClient = async (req, res, next) => {
       const existingUser = await User.findOne({ email }).lean();
       if (existingUser) {
         return next(new AppError('User with this email already exists', 400));
+      }
+
+      // Validate password if provided
+      if (password) {
+        if (!confirmPassword) {
+          return next(new AppError('Please confirm the password', 400));
+        }
+        if (password !== confirmPassword) {
+          return next(new AppError('Passwords do not match', 400));
+        }
+        if (password.length < 6) {
+          return next(new AppError('Password must be at least 6 characters long', 400));
+        }
+      } else {
+        return next(new AppError('Password is required when creating client with email', 400));
       }
     }
 
@@ -55,15 +70,13 @@ exports.createClient = async (req, res, next) => {
     // Create user account if email is provided
     let userData = null;
     if (email) {
-      const tempPassword = "password" + clientData.phone;
-      
       userData = {
         name: name,
         email: email,
-        password: tempPassword,
+        password: password,
         role: 'CLIENT',
         clientRef: client._id,
-        isTemporaryPassword: true,
+        isTemporaryPassword: false,
       };
 
       const user = await User.create(userData);
@@ -72,8 +85,7 @@ exports.createClient = async (req, res, next) => {
       userData = {
         userId: user._id,
         email: user.email,
-        temporaryPassword: tempPassword,
-        isTemporaryPassword: true,
+        isTemporaryPassword: false,
       };
     }
 
