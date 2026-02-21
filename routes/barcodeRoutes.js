@@ -10,6 +10,8 @@ const {
   downloadAllAssetsPDF,
   downloadSingleAssetQR,
   downloadMultipleAssetsQR,
+  getBarcodeViewSummaryReport,
+  getBarcodeViewAssetsReport,
 } = require('../controllers/barcodeController');
 const { protect, restrictTo } = require('../middleware/auth');
 
@@ -18,6 +20,8 @@ router.get('/public/scan/:barcodeValue', scanBarcodePublic);
 router.use(protect);
 
 router.get('/scan/:barcodeValue', scanBarcode);
+router.get('/reports/views/summary', getBarcodeViewSummaryReport);
+router.get('/reports/views/assets', getBarcodeViewAssetsReport);
 
 router.get('/download/:assetId', downloadBarcode);
 

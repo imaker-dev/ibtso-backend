@@ -2,6 +2,7 @@ const Asset = require('../models/Asset');
 const Dealer = require('../models/Dealer');
 const Brand = require('../models/Brand');
 const Client = require('../models/Client');
+const BarcodeScanLog = require('../models/BarcodeScanLog');
 const { AppError } = require('../middleware/errorHandler');
 const { regenerateBarcode, generateBarcodeValue, generateBarcodeImage } = require('../services/barcodeService');
 const PDFDocument = require('pdfkit');
@@ -9,6 +10,111 @@ const archiver = require('archiver');
 const fs = require('fs');
 const path = require('path');
 const moment = require('moment');
+const mongoose = require('mongoose');
+
+const ALLOWED_REPORT_SORT_FIELDS = ['totalViews', 'lastViewedAt', 'firstViewedAt', 'assetNo'];
+
+const parseReportDateRange = (query) => {
+  const { startDate, endDate } = query;
+  const match = {};
+
+  if (startDate) {
+    const parsedStartDate = new Date(startDate);
+    if (Number.isNaN(parsedStartDate.getTime())) {
+      throw new AppError('Invalid startDate. Use YYYY-MM-DD format', 400);
+    }
+    match.$gte = parsedStartDate;
+  }
+
+  if (endDate) {
+    const parsedEndDate = new Date(endDate);
+    if (Number.isNaN(parsedEndDate.getTime())) {
+      throw new AppError('Invalid endDate. Use YYYY-MM-DD format', 400);
+    }
+    parsedEndDate.setHours(23, 59, 59, 999);
+    match.$lte = parsedEndDate;
+  }
+
+  if (match.$gte && match.$lte && match.$gte > match.$lte) {
+    throw new AppError('startDate cannot be greater than endDate', 400);
+  }
+
+  return Object.keys(match).length > 0 ? match : null;
+};
+
+const parsePositiveNumber = (value, defaultValue) => {
+  const parsedValue = Number.parseInt(value, 10);
+  return Number.isNaN(parsedValue) || parsedValue < 1 ? defaultValue : parsedValue;
+};
+
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+
+const getClientDealerIds = async (clientRef) => {
+  const client = await Client.findById(clientRef).select('dealerIds');
+  if (!client) {
+    throw new AppError('Client not found', 404);
+  }
+  return client.dealerIds.map((dealerId) => dealerId.toString());
+};
+
+const getReportDealerScope = async (req, requestedDealerId, requestedClientId) => {
+  if (requestedDealerId && !isValidObjectId(requestedDealerId)) {
+    throw new AppError('Invalid dealerId', 400);
+  }
+
+  if (requestedClientId && !isValidObjectId(requestedClientId)) {
+    throw new AppError('Invalid clientId', 400);
+  }
+
+  if (req.user.role === 'ADMIN') {
+    let dealerIds = null;
+
+    if (requestedClientId) {
+      const client = await Client.findById(requestedClientId).select('dealerIds');
+      if (!client) {
+        throw new AppError('Client not found', 404);
+      }
+      dealerIds = client.dealerIds.map((dealerId) => dealerId.toString());
+    }
+
+    if (requestedDealerId) {
+      if (!dealerIds) return [requestedDealerId];
+      if (!dealerIds.includes(requestedDealerId)) {
+        throw new AppError('Requested dealer does not belong to the selected client', 400);
+      }
+      return [requestedDealerId];
+    }
+
+    return dealerIds;
+  }
+
+  if (req.user.role === 'DEALER') {
+    const dealerRef = req.user.dealerRef ? req.user.dealerRef.toString() : null;
+    if (!dealerRef) {
+      throw new AppError('Dealer account is not linked to a dealer profile', 403);
+    }
+    if (requestedClientId) {
+      throw new AppError('clientId filter is only available for admins', 403);
+    }
+    if (requestedDealerId && requestedDealerId !== dealerRef) {
+      throw new AppError('You can only access your own dealer report', 403);
+    }
+    return [dealerRef];
+  }
+
+  if (req.user.role === 'CLIENT') {
+    if (requestedClientId && requestedClientId !== req.user.clientRef.toString()) {
+      throw new AppError('You can only access your own client report', 403);
+    }
+    const clientDealerIds = await getClientDealerIds(req.user.clientRef);
+    if (requestedDealerId && !clientDealerIds.includes(requestedDealerId)) {
+      throw new AppError('You do not have access to this dealer report', 403);
+    }
+    return requestedDealerId ? [requestedDealerId] : clientDealerIds;
+  }
+
+  throw new AppError('You do not have permission to access this report', 403);
+};
 
 exports.scanBarcodePublic = async (req, res, next) => {
   try {
@@ -26,7 +132,7 @@ exports.scanBarcodePublic = async (req, res, next) => {
       .populate('updatedBy', 'name email');
 
     if (!asset) {
-      console.log('Asset not found for barcode:', asset.dimension );
+      console.log('Asset not found for barcode:', barcodeValue);
       return res.status(404).send(`
         <!DOCTYPE html>
         <html>
@@ -72,6 +178,28 @@ exports.scanBarcodePublic = async (req, res, next) => {
         </body>
         </html>
       `);
+    }
+
+    try {
+      const forwardedFor = req.headers['x-forwarded-for'];
+      const ipAddress = Array.isArray(forwardedFor)
+        ? forwardedFor[0]
+        : (forwardedFor ? forwardedFor.split(',')[0].trim() : req.ip);
+
+      await BarcodeScanLog.create({
+        assetId: asset._id,
+        barcodeValue: asset.barcodeValue,
+        dealerId: asset.dealerId ? asset.dealerId._id : null,
+        clientId: asset.clientId ? asset.clientId._id : null,
+        scanType: 'PUBLIC',
+        scannedAt: new Date(),
+        ipAddress,
+        userAgent: req.get('user-agent') || '',
+        referer: req.get('referer') || '',
+      });
+    } catch (scanLogError) {
+      // Scan logging failures should not block user-facing barcode display.
+      console.error('Failed to persist barcode scan log:', scanLogError.message);
     }
 
     const statusColors = {
@@ -399,6 +527,327 @@ exports.scanBarcode = async (req, res, next) => {
       success: true,
       message: 'Asset details retrieved successfully',
       data: assetData,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getBarcodeViewSummaryReport = async (req, res, next) => {
+  try {
+    const { dealerId, clientId, brandId } = req.query;
+    const scannedAtMatch = parseReportDateRange(req.query);
+    const scopedDealerIds = await getReportDealerScope(req, dealerId, clientId);
+
+    if (brandId && !isValidObjectId(brandId)) {
+      return next(new AppError('Invalid brandId', 400));
+    }
+
+    const baseMatch = { scanType: 'PUBLIC' };
+    if (scannedAtMatch) {
+      baseMatch.scannedAt = scannedAtMatch;
+    }
+    if (scopedDealerIds) {
+      baseMatch.dealerId = {
+        $in: scopedDealerIds.map((id) => new mongoose.Types.ObjectId(id)),
+      };
+    }
+
+    const pipeline = [
+      { $match: baseMatch },
+      {
+        $lookup: {
+          from: 'assets',
+          localField: 'assetId',
+          foreignField: '_id',
+          as: 'asset',
+        },
+      },
+      { $unwind: '$asset' },
+      { $match: { 'asset.isDeleted': { $ne: true } } },
+    ];
+
+    if (brandId) {
+      pipeline.push({
+        $match: { 'asset.brandId': new mongoose.Types.ObjectId(brandId) },
+      });
+    }
+
+    pipeline.push({
+      $facet: {
+        totals: [
+          {
+            $group: {
+              _id: null,
+              totalViews: { $sum: 1 },
+              uniqueAssetIds: { $addToSet: '$assetId' },
+              uniqueBarcodeValues: { $addToSet: '$barcodeValue' },
+              lastViewedAt: { $max: '$scannedAt' },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              totalViews: 1,
+              uniqueAssetsViewed: { $size: '$uniqueAssetIds' },
+              uniqueBarcodeValuesViewed: { $size: '$uniqueBarcodeValues' },
+              lastViewedAt: 1,
+            },
+          },
+        ],
+        topAssets: [
+          {
+            $group: {
+              _id: '$assetId',
+              totalViews: { $sum: 1 },
+              lastViewedAt: { $max: '$scannedAt' },
+              barcodeValue: { $first: '$barcodeValue' },
+              assetNo: { $first: '$asset.assetNo' },
+              fixtureNo: { $first: '$asset.fixtureNo' },
+              dealerId: { $first: '$asset.dealerId' },
+              status: { $first: '$asset.status' },
+            },
+          },
+          { $sort: { totalViews: -1, lastViewedAt: -1 } },
+          { $limit: 10 },
+          {
+            $lookup: {
+              from: 'dealers',
+              localField: 'dealerId',
+              foreignField: '_id',
+              as: 'dealer',
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              assetId: '$_id',
+              assetNo: 1,
+              fixtureNo: 1,
+              barcodeValue: 1,
+              status: 1,
+              totalViews: 1,
+              lastViewedAt: 1,
+              dealer: {
+                _id: { $arrayElemAt: ['$dealer._id', 0] },
+                dealerCode: { $arrayElemAt: ['$dealer.dealerCode', 0] },
+                name: { $arrayElemAt: ['$dealer.name', 0] },
+              },
+            },
+          },
+        ],
+        viewsByDay: [
+          {
+            $group: {
+              _id: {
+                $dateToString: { format: '%Y-%m-%d', date: '$scannedAt' },
+              },
+              totalViews: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } },
+          {
+            $project: {
+              _id: 0,
+              date: '$_id',
+              totalViews: 1,
+            },
+          },
+        ],
+      },
+    });
+
+    const [summaryResult] = await BarcodeScanLog.aggregate(pipeline);
+    const normalizedSummaryResult = summaryResult || { totals: [], topAssets: [], viewsByDay: [] };
+    const totals =
+      normalizedSummaryResult.totals && normalizedSummaryResult.totals[0]
+        ? normalizedSummaryResult.totals[0]
+        : {
+            totalViews: 0,
+            uniqueAssetsViewed: 0,
+            uniqueBarcodeValuesViewed: 0,
+            lastViewedAt: null,
+          };
+
+    res.status(200).json({
+      success: true,
+      message: 'Barcode view summary retrieved successfully',
+      data: {
+        filters: {
+          startDate: req.query.startDate || null,
+          endDate: req.query.endDate || null,
+          dealerId: dealerId || null,
+          clientId: clientId || null,
+          brandId: brandId || null,
+        },
+        totals,
+        topAssets: normalizedSummaryResult.topAssets || [],
+        viewsByDay: normalizedSummaryResult.viewsByDay || [],
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getBarcodeViewAssetsReport = async (req, res, next) => {
+  try {
+    const {
+      dealerId,
+      clientId,
+      brandId,
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'totalViews',
+      sortOrder = 'desc',
+    } = req.query;
+
+    const scannedAtMatch = parseReportDateRange(req.query);
+    const scopedDealerIds = await getReportDealerScope(req, dealerId, clientId);
+
+    if (brandId && !isValidObjectId(brandId)) {
+      return next(new AppError('Invalid brandId', 400));
+    }
+
+    if (!ALLOWED_REPORT_SORT_FIELDS.includes(sortBy)) {
+      return next(
+        new AppError(
+          `Invalid sortBy. Allowed values: ${ALLOWED_REPORT_SORT_FIELDS.join(', ')}`,
+          400
+        )
+      );
+    }
+
+    const sortDirection = sortOrder === 'asc' ? 1 : -1;
+    const currentPage = parsePositiveNumber(page, 1);
+    const perPage = parsePositiveNumber(limit, 10);
+
+    const baseMatch = { scanType: 'PUBLIC' };
+    if (scannedAtMatch) {
+      baseMatch.scannedAt = scannedAtMatch;
+    }
+    if (scopedDealerIds) {
+      baseMatch.dealerId = {
+        $in: scopedDealerIds.map((id) => new mongoose.Types.ObjectId(id)),
+      };
+    }
+
+    const pipeline = [
+      { $match: baseMatch },
+      {
+        $lookup: {
+          from: 'assets',
+          localField: 'assetId',
+          foreignField: '_id',
+          as: 'asset',
+        },
+      },
+      { $unwind: '$asset' },
+      { $match: { 'asset.isDeleted': { $ne: true } } },
+    ];
+
+    if (brandId) {
+      pipeline.push({
+        $match: { 'asset.brandId': new mongoose.Types.ObjectId(brandId) },
+      });
+    }
+
+    if (search) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { barcodeValue: { $regex: search, $options: 'i' } },
+            { 'asset.assetNo': { $regex: search, $options: 'i' } },
+            { 'asset.fixtureNo': { $regex: search, $options: 'i' } },
+          ],
+        },
+      });
+    }
+
+    pipeline.push({
+      $group: {
+        _id: '$assetId',
+        assetNo: { $first: '$asset.assetNo' },
+        fixtureNo: { $first: '$asset.fixtureNo' },
+        barcodeValue: { $first: '$barcodeValue' },
+        dealerId: { $first: '$asset.dealerId' },
+        brandId: { $first: '$asset.brandId' },
+        status: { $first: '$asset.status' },
+        totalViews: { $sum: 1 },
+        firstViewedAt: { $min: '$scannedAt' },
+        lastViewedAt: { $max: '$scannedAt' },
+      },
+    });
+
+    pipeline.push({
+      $sort: {
+        [sortBy]: sortDirection,
+        assetNo: 1,
+      },
+    });
+
+    pipeline.push({
+      $facet: {
+        metadata: [{ $count: 'total' }],
+        data: [
+          { $skip: (currentPage - 1) * perPage },
+          { $limit: perPage },
+          {
+            $lookup: {
+              from: 'dealers',
+              localField: 'dealerId',
+              foreignField: '_id',
+              as: 'dealer',
+            },
+          },
+          {
+            $lookup: {
+              from: 'brands',
+              localField: 'brandId',
+              foreignField: '_id',
+              as: 'brand',
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              assetId: '$_id',
+              assetNo: 1,
+              fixtureNo: 1,
+              barcodeValue: 1,
+              status: 1,
+              totalViews: 1,
+              firstViewedAt: 1,
+              lastViewedAt: 1,
+              dealer: {
+                _id: { $arrayElemAt: ['$dealer._id', 0] },
+                dealerCode: { $arrayElemAt: ['$dealer.dealerCode', 0] },
+                name: { $arrayElemAt: ['$dealer.name', 0] },
+              },
+              brand: {
+                _id: { $arrayElemAt: ['$brand._id', 0] },
+                name: { $arrayElemAt: ['$brand.name', 0] },
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    const [reportResult] = await BarcodeScanLog.aggregate(pipeline);
+    const normalizedReportResult = reportResult || { metadata: [], data: [] };
+    const total = normalizedReportResult.metadata[0] ? normalizedReportResult.metadata[0].total : 0;
+    const totalPages = Math.ceil(total / perPage) || 0;
+
+    res.status(200).json({
+      success: true,
+      message: 'Barcode view asset report retrieved successfully',
+      count: normalizedReportResult.data.length,
+      total,
+      totalPages,
+      currentPage,
+      data: normalizedReportResult.data,
     });
   } catch (error) {
     next(error);
