@@ -6,22 +6,6 @@ const options = {
     info: {
       title: 'IBTSO Asset Tracking API',
       version: '1.0.0',
-      description: `
-## Overview
-IBTSO Asset Tracking Platform - A comprehensive solution for managing assets, dealers, brands, and QR code tracking.
-
-## Authentication
-All protected endpoints require a JWT Bearer token in the Authorization header:
-\`\`\`
-Authorization: Bearer <your_jwt_token>
-\`\`\`
-
-## Roles
-- **ADMIN**: Full system access - manage dealers, brands, clients, assets, and view all analytics
-- **DEALER**: Access to own assets, profile management, and assigned brands
-- **CLIENT**: View assets from associated dealers, scan history, and profile management
-
-      `,
       contact: {
         name: 'IBTSO Support'
         // email: 'support@ibtso.com',
