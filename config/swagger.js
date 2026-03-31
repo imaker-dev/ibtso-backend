@@ -21,8 +21,6 @@ Authorization: Bearer <your_jwt_token>
 - **DEALER**: Access to own assets, profile management, and assigned brands
 - **CLIENT**: View assets from associated dealers, scan history, and profile management
 
-## Base URL
-\`https://api.ibtso.com/api/v1\`
       `,
       contact: {
         name: 'IBTSO Support'
@@ -33,6 +31,10 @@ Authorization: Bearer <your_jwt_token>
       },
     },
     servers: [
+      {
+        url: 'http://localhost:5000',
+        description: 'Local Development Server',
+      },
       {
         url: 'https://api.ibtso.com',
         description: 'Production Server',
