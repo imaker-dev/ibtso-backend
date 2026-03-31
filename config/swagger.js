@@ -37,10 +37,6 @@ Authorization: Bearer <your_jwt_token>
         url: 'https://api.ibtso.com',
         description: 'Production Server',
       },
-      {
-        url: process.env.APP_URL || 'http://localhost:5000',
-        description: 'Development Server',
-      },
     ],
     components: {
       securitySchemes: {
