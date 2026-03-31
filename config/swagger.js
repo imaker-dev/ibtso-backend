@@ -22,7 +22,7 @@ Authorization: Bearer <your_jwt_token>
 - **CLIENT**: View assets from associated dealers, scan history, and profile management
 
 ## Base URL
-\`${process.env.APP_URL || 'http://localhost:5000'}/api/v1\`
+\`https://api.ibtso.com/api/v1\`
       `,
       contact: {
         name: 'IBTSO Support',
@@ -34,8 +34,12 @@ Authorization: Bearer <your_jwt_token>
     },
     servers: [
       {
+        url: 'https://api.ibtso.com',
+        description: 'Production Server',
+      },
+      {
         url: process.env.APP_URL || 'http://localhost:5000',
-        description: 'API Server',
+        description: 'Development Server',
       },
     ],
     components: {
