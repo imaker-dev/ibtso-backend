@@ -1,12 +1,5 @@
 const swaggerJsdoc = require('swagger-jsdoc');
 
-// Determine server URL based on environment
-const isProduction = process.env.NODE_ENV === 'production';
-const productionUrl = 'https://api.ibtso.com';
-const developmentUrl = process.env.APP_URL || 'http://localhost:5000';
-const currentServerUrl = isProduction ? productionUrl : developmentUrl;
-const currentServerDescription = isProduction ? 'Production Server' : 'Development Server';
-
 const options = {
   definition: {
     openapi: '3.0.0',
@@ -29,7 +22,7 @@ Authorization: Bearer <your_jwt_token>
 - **CLIENT**: View assets from associated dealers, scan history, and profile management
 
 ## Base URL
-\`${currentServerUrl}/api/v1\`
+\`https://api.ibtso.com/api/v1\`
       `,
       contact: {
         name: 'IBTSO Support',
@@ -40,8 +33,8 @@ Authorization: Bearer <your_jwt_token>
     },
     servers: [
       {
-        url: currentServerUrl,
-        description: currentServerDescription,
+        url: 'https://api.ibtso.com',
+        description: 'API Server',
       },
     ],
     components: {
@@ -237,7 +230,7 @@ Authorization: Bearer <your_jwt_token>
             imageUrls: {
               type: 'array',
               items: { type: 'string' },
-              example: ['http://localhost:5000/uploads/assets/image1.jpg'],
+              example: ['https://api.ibtso.com/uploads/assets/image1.jpg'],
             },
             installationDate: { type: 'string', format: 'date', example: '2024-01-15' },
             location: {
@@ -251,7 +244,7 @@ Authorization: Bearer <your_jwt_token>
             },
             barcodeValue: { type: 'string', example: 'IBTSO-JOHN-1234567890-ABC123' },
             barcodeImagePath: { type: 'string', example: 'uploads/barcodes/qr-123.png' },
-            barcodeImageUrl: { type: 'string', example: 'http://localhost:5000/uploads/barcodes/qr-123.png' },
+            barcodeImageUrl: { type: 'string', example: 'https://api.ibtso.com/uploads/barcodes/qr-123.png' },
             status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'MAINTENANCE', 'DAMAGED'], example: 'ACTIVE' },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
