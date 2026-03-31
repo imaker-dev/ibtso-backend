@@ -1,14 +1,38 @@
 const swaggerJsdoc = require('swagger-jsdoc');
 
+// Determine server URL based on environment
+const isProduction = process.env.NODE_ENV === 'production';
+const productionUrl = 'https://api.ibtso.com';
+const developmentUrl = process.env.APP_URL || 'http://localhost:5000';
+const currentServerUrl = isProduction ? productionUrl : developmentUrl;
+const currentServerDescription = isProduction ? 'Production Server' : 'Development Server';
+
 const options = {
   definition: {
     openapi: '3.0.0',
     info: {
       title: 'IBTSO Asset Tracking API',
       version: '1.0.0',
+      description: `
+## Overview
+IBTSO Asset Tracking Platform - A comprehensive solution for managing assets, dealers, brands, and QR code tracking.
+
+## Authentication
+All protected endpoints require a JWT Bearer token in the Authorization header:
+\`\`\`
+Authorization: Bearer <your_jwt_token>
+\`\`\`
+
+## Roles
+- **ADMIN**: Full system access - manage dealers, brands, clients, assets, and view all analytics
+- **DEALER**: Access to own assets, profile management, and assigned brands
+- **CLIENT**: View assets from associated dealers, scan history, and profile management
+
+## Base URL
+\`${currentServerUrl}/api/v1\`
+      `,
       contact: {
-        name: 'IBTSO Support'
-        // email: 'support@ibtso.com',
+        name: 'IBTSO Support',
       },
       license: {
         name: 'ISC',
@@ -16,12 +40,8 @@ const options = {
     },
     servers: [
       {
-        url: 'http://localhost:5000',
-        description: 'Local Development Server',
-      },
-      {
-        url: 'https://api.ibtso.com',
-        description: 'Production Server',
+        url: currentServerUrl,
+        description: currentServerDescription,
       },
     ],
     components: {
