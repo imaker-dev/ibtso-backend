@@ -4,6 +4,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
 const connectDB = require('./config/database');
 const { errorHandler } = require('./middleware/errorHandler');
 const { createDefaultAdmin } = require('./utils/seedAdmin');
@@ -56,6 +58,24 @@ app.get('/api/v1/health', (req, res) => {
     message: 'IBTSO Asset Tracking API is running',
     timestamp: new Date().toISOString()
   });
+});
+
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'IBTSO Asset Tracking API Documentation',
+  swaggerOptions: {
+    persistAuthorization: true,
+    docExpansion: 'none',
+    filter: true,
+    showRequestDuration: true,
+  },
+}));
+
+// Swagger JSON endpoint
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
 });
 
 app.use('/api/v1/auth', require('./routes/authRoutes'));
