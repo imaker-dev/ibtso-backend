@@ -25,8 +25,8 @@ Authorization: Bearer <your_jwt_token>
 \`https://api.ibtso.com/api/v1\`
       `,
       contact: {
-        name: 'IBTSO Support',
-        email: 'support@ibtso.com',
+        name: 'IBTSO Support'
+        // email: 'support@ibtso.com',
       },
       license: {
         name: 'ISC',
